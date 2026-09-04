@@ -44,9 +44,11 @@ skills that shrink to what needs judgement.
   `references/` and is read on demand.
 - The three answers only the user has — a rule's type, an ambiguous scope, and
   the anchor of a glob going global — are asked as options to pick instead of
-  prose, and the type options are built from what `config` prints, so a
-  replaced taxonomy travels into the question. Splitting a paste asks for every
-  fragment's type in one round, and so does `doctor`'s untyped-rule finding.
+  prose, and the type options are built from what `config` prints — closest
+  purpose first, marked as the recommendation — so a replaced taxonomy travels
+  into the question and the obvious type costs a keystroke, not a decision.
+  Splitting a paste asks for every fragment's type in one round, and so does
+  `doctor`'s untyped-rule finding.
   More than four types, or nobody to answer (a `-p` run, a subagent), falls
   back to prose and to the CLI's own refusal.
 - **`publish.sh` refuses an empty `## Unreleased`, and renames it on the way

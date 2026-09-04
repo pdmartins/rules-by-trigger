@@ -5,6 +5,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
+### Changed
+
+- `enforce: deny` is now **`block: true`**, and the `enforce` admin subcommand
+  is now `block`. The old spelling said the same thing twice and borrowed
+  `deny` from the permissions vocabulary it is only one implementation of.
+- Both old names keep working. A rule still carrying `enforce: deny` is
+  honoured exactly as before — silently, the way `remember_after` has been
+  since 0.4.0 — and `migrate` rewrites it. `enforce` as a subcommand still
+  runs, with a warning naming `block`. A value the hook never understood
+  (`enforce: warn`) is left alone by `migrate` rather than rewritten: turning a
+  setting that did nothing into one that denies tool calls is the one thing a
+  tidying step must not do.
+- `validate` points the old spelling out, and its block-related notes now name
+  `block --sync` as the way to bridge a project rule to a native deny.
+
 ## 0.6.0 — 2026-09-04
 
 One deterministic command per job — `status`, `doctor`, `move`, `digest` — and

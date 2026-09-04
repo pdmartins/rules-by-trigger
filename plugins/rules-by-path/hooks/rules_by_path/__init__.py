@@ -76,7 +76,7 @@ from .constants import (ADMIN_COMMAND, BRAZILIAN_PORTUGUESE,
                         CONFIG_FILE_NAME, DEFAULT_LANGUAGE,
                         DEFAULT_REMEMBER_AGAIN_CALLS,
                         DEFAULT_REMEMBER_AGAIN_TOKENS,
-                        ENFORCE_DENY_REASON_TEMPLATE, FILE_PATH_KEYS,
+                        BLOCK_REASON_TEMPLATE, FILE_PATH_KEYS,
                         FORGED_FRAMING_TOKENS, HARNESS_MARKER,
                         LANGUAGE_EXTRA_CHARS,
                         LANGUAGE_FORBIDDEN_CHARS, LANGUAGE_KEY,
@@ -112,11 +112,13 @@ from .messages import (ENFORCE_DENY_REASON_TEMPLATE_KEY,
                        TRUNCATION_NOTICE_KEY, canonical_language,
                        has_translation, messages_for, normalize_language,
                        sanitize_language)
-from .frontmatter import (EXCLUDE_KEYS, GLOB_KEYS, TOOL_KEYS, declared_values,
-                          enforce_of, excludes_of, glob_list, globs_of,
-                          parse_frontmatter, parse_remember_again_after,
-                          parse_size, remember_again_after_of, tool_values_of,
-                          tools_of, unquote)
+from .frontmatter import (BLOCK_KEY, BLOCK_TRUE_VALUES, EXCLUDE_KEYS,
+                          GLOB_KEYS, LEGACY_BLOCK_KEY, LEGACY_BLOCK_VALUE,
+                          TOOL_KEYS, block_of, declared_values, excludes_of,
+                          first_value, glob_list, globs_of, parse_frontmatter,
+                          parse_remember_again_after, parse_size,
+                          remember_again_after_of, tool_values_of, tools_of,
+                          unquote)
 from .configfile import config_path_for, read_config_file
 from .config import (find_rule_type, language, load_config,
                      load_layer, max_rule_chars,
@@ -140,5 +142,5 @@ from .state import (cleanup_stale_state, close_state,
 from .stats import (load_stats, matched_dir, record_injections, rule_key,
                     stats_path)
 from .context import build_context, defang, neutralize
-from .main import (build_blocks, cli, config_for_scopes, enforce_denial, main,
+from .main import (build_blocks, cli, config_for_scopes, blocking_rule, main,
                    messages_for_scopes, reset_session, session_notice)

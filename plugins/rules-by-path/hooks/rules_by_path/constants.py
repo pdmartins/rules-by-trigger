@@ -14,8 +14,8 @@ ADMIN_COMMAND = os.path.join(PLUGIN_ROOT, "bin", "rules-by-path")
 RULES_DIR_RELPATH = os.path.join(".claude", "rules-by-path")
 LEGACY_MAP_NAME = "rules-map.yml"
 FILE_PATH_KEYS = ("file_path", "notebook_path", "path")
-# The only tools `enforce: deny` ever acts on. Read/Grep never write, so an
-# enforce rule has nothing to deny them from doing.
+# The only tools `block: true` ever acts on. Read/Grep never write, so a
+# blocking rule has nothing to stop them from doing.
 WRITE_TOOL_NAMES = ("Write", "Edit", "MultiEdit", "NotebookEdit")
 # The two kinds of tool call a rule's `tool:` filter can name. The hook only
 # ever runs for the five file tools, so everything that is not a write is a
@@ -217,14 +217,14 @@ SUPERSEDE_NOTICE = (
     "conversation."
 )
 
-# The reason shown for an `enforce: deny` block. The hook does not validate
+# The reason shown for a `block: true` block. The hook does not validate
 # the rule, only the path — the added value is (a) the rule's own text as the
 # pedagogical reason a human or model reads for WHY, and (b) not having to
 # hand-author a `permissions.deny` entry. `{body}` is filled in already
 # defanged (see `neutralize`), so this template itself carries none of the
 # rule's untrusted content directly.
-ENFORCE_DENY_REASON_TEMPLATE = (
-    "rules-by-path: this tool call is blocked by the enforced rule {name!r} "
+BLOCK_REASON_TEMPLATE = (
+    "rules-by-path: this tool call is blocked by the rule {name!r} "
     "(global scope). Its own text is the reason:\n\n{body}"
 )
 

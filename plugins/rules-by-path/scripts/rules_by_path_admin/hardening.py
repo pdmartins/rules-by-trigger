@@ -13,7 +13,7 @@ import json
 import os
 
 from .common import atomic_write
-from .enforce import (SETTINGS_RELPATH, existing_deny_entries,
+from .block import (SETTINGS_RELPATH, existing_deny_entries,
                       read_settings_for_sync)
 
 HARDENING_DENY_ENTRIES = (

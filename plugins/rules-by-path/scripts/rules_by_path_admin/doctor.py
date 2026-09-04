@@ -17,7 +17,7 @@ from types import SimpleNamespace
 from .common import (HOOK, HOOK_PATH, INTERVAL_KEY, LEGACY_INTERVAL_KEY,
                      LEGACY_MAP_NAME, rules_in)
 from .config import TYPE_SEPARATOR, config_for, split_type_prefix
-from .enforce import read_settings_for_sync
+from .block import read_settings_for_sync
 from .hardening import (apply_hardening, hardening_state, remove_hardening,
                         user_settings_path)
 from .migrate import cmd_migrate

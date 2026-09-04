@@ -62,7 +62,7 @@ Four gaps in that native behaviour are what this plugin is actually for:
    managed at scale from a script — none of which the native mechanism
    exposes.
 4. **No policy tied to a human reason.** Native `permissions.deny` blocks
-   silently. A **global** rule with `enforce: deny` blocks too, and shows the
+   silently. A **global** rule with `block: true` blocks too, and shows the
    rule's own text as *why* (see *Enforcing a rule* below) — the hook does not
    validate the rule, only the path; the added value is a pedagogical reason
    plus not having to hand-author a permission entry.
@@ -310,7 +310,7 @@ parsed is skipped with a warning; nothing about a config can stop injection.
 `language` is what the manage skill writes rule **bodies** in, so the choice
 stops being re-made from the language of each conversation. It is also the
 language of the text the hook injects around them — the session notice, the
-supersede and truncation notices, the reason an `enforce: deny` gives —
+supersede and truncation notices, the reason a `block: true` gives —
 whenever the plugin ships a translation of it. Shipped: `en` (the default) and
 `pt-BR`; `pt_br` and `PT-BR` select the same one.
 
@@ -324,7 +324,7 @@ characters of visible letters, digits, spaces and `-_()`, normalized to NFKC so
 a lookalike of `en` is `en`, and anything else is warned about and ignored. The
 allowlist buys exactly one thing — the value cannot forge a delimiter, a
 frontmatter key or a second line — so the CLI quotes it rather than reading it
-out as prose. The `enforce: deny` reason is the one exception to the project
+out as prose. The `block: true` reason is the one exception to the project
 winning: that sentence speaks for you against the repository being blocked, so
 only your own layers choose the language it arrives in.
 
@@ -356,7 +356,7 @@ anywhere). To target a `docs/` folder wherever it appears, use `**/docs/**`.
 
 - **Never blocks work by accident**: any internal hook failure goes to stderr
   and the tool call proceeds untouched. The hook denies a tool call only
-  through one deliberate, narrow path — a **global** rule with `enforce: deny`
+  through one deliberate, narrow path — a **global** rule with `block: true`
   matching a write (see *Enforcing a rule* below) — never as a side effect of a
   failure. The recommended hardening's own `permissions.deny` entries (see
   *Security model*) are a second, independent way to deny, which the hook has
@@ -466,7 +466,7 @@ next session. The notice is emitted only when a scope actually exists.
 It raises the bar; it is not a sandbox — it constrains Claude's file tools,
 not arbitrary subprocesses. Optional, but it is how the system is meant to run.
 
-### Enforcing a rule (`enforce: deny`)
+### Blocking a write (`block: true`)
 
 Native `permissions.deny` blocks a tool call with no explanation attached. A
 rule can ask for the same block, plus one thing native deny does not offer: its
@@ -475,35 +475,39 @@ own body as the reason a human or model actually reads.
 ```markdown
 ---
 glob: infra/prod/**
-enforce: deny
+block: true
 ---
 Production infrastructure is changed through the deploy pipeline only, never
 by hand. Open a PR against `infra/` instead.
 ```
 
+This setting was spelled `enforce: deny` until 0.7.0. Rules still carrying
+that spelling keep working untouched; `migrate` rewrites them, and `validate`
+points them out.
+
 The hook still does not read a rule for CORRECTNESS — it only ever matches a
-path — so `enforce: deny` is exactly the native deny, with the rule's
+path — so `block: true` is exactly the native deny, with the rule's
 (defanged) text attached as `permissionDecisionReason`. It fires only for
 `Write`, `Edit`, `MultiEdit` and `NotebookEdit`; `Read` is never denied.
 
 **Trust gate: honoured from the GLOBAL scope only.** A project's
 `.claude/rules-by-path/` arrives with whatever repository is checked out —
 exactly as untrusted as its `CLAUDE.md` — so a project rule that declares
-`enforce: deny` is inert to the hook, silently, no matter how it is worded.
+`block: true` is inert to the hook, silently, no matter how it is worded.
 There is no config, environment variable or project layer that widens this: it
 is keyed to which scope actually matched, not to anything a repository could
 set. `validate` still points it out, with the way around it:
 
 ```bash
-"<plugin>/bin/rules-by-path" enforce --root <project-root> --list   # what would fire, and what it maps to
-"<plugin>/bin/rules-by-path" enforce --root <project-root> --sync   # write the native deny entries for real
+"<plugin>/bin/rules-by-path" block --root <project-root> --list   # what would fire, and what it maps to
+"<plugin>/bin/rules-by-path" block --root <project-root> --sync   # write the native deny entries for real
 ```
 
 `--sync` writes one `Edit(<glob>)` entry per glob into that project's own
 `.claude/settings.json` — `Edit(...)` alone, because it already covers every
 file-editing tool (see *Recommended hardening* above); idempotent, and it
 creates a minimal `settings.json` if the project has none yet. A global rule
-needs no such sync: the hook already enforces it directly, so `--sync --global`
+needs no such sync: the hook already blocks directly, so `--sync --global`
 is refused.
 
 ## Uninstalling

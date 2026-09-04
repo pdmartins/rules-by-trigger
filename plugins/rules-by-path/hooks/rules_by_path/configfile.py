@@ -58,7 +58,7 @@ def read_config_file(path):
         # nested arrays, and the decoder answers that with RecursionError, which
         # is not a ValueError and would leave this function by raising — from a
         # file that arrived with a repository, on the path that also decides an
-        # `enforce: deny`. What a config file may cost is itself, nothing more.
+        # `block: true`. What a config file may cost is itself, nothing more.
         warn(f"{path} is not valid JSON ({exc}); ignored")
         return None
     if not isinstance(loaded, dict):

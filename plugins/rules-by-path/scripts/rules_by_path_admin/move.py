@@ -38,11 +38,11 @@ TYPE_MISSING = ("the type prefix of {name!r} is not in the destination's "
                 "configured there:\n{types}")
 LANGUAGE_DIFFERS = ("the destination writes rules in {dest!r}, the source in "
                     "{source!r}; the body was moved as is, not translated")
-ENFORCE_TO_GLOBAL = ("this rule carries `enforce: deny`: in the global scope the "
-                     "hook honours it, so matching writes will be BLOCKED from now on")
-ENFORCE_TO_PROJECT = ("this rule carries `enforce: deny`: a project scope cannot "
-                      "enforce it — run `enforce --sync` there to write the "
-                      "native deny entry")
+BLOCK_TO_GLOBAL = ("this rule carries `block: true`: in the global scope the "
+                   "hook honours it, so matching writes will be BLOCKED from now on")
+BLOCK_TO_PROJECT = ("this rule carries `block: true`: a project scope cannot "
+                    "block on its own — run `block --sync` there to write the "
+                    "native deny entry")
 MOVED = "ok: moved {name}  {source} -> {dest}"
 REWRITTEN = "    {key}: {before!r} -> {after!r}"
 PROVE = ("check the reach: `which --{flag} --path '<a file it should govern>'` "
@@ -171,8 +171,8 @@ def cmd_move(args):
                 print(REWRITTEN.format(key=key, before=before, after=after))
     if source_language != dest_language:
         warn(LANGUAGE_DIFFERS.format(dest=dest_language, source=source_language))
-    if HOOK.enforce_of(fields) == "deny":
-        warn(ENFORCE_TO_GLOBAL if dest.use_global else ENFORCE_TO_PROJECT)
+    if HOOK.block_of(fields):
+        warn(BLOCK_TO_GLOBAL if dest.use_global else BLOCK_TO_PROJECT)
     print(PROVE.format(flag=dest_flag))
     validate_scope(dest_dir, dest_anchor, quiet=True, config=dest_config,
                    is_global=dest.use_global)

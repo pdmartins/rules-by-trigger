@@ -1,14 +1,15 @@
 """`migrate`: bring a scope up to the current format.
 
 Three idempotent steps — rename pre-0.4.0 type prefixes, rewrite the frontmatter
-key that was renamed with them, and convert a legacy `rules-map.yml` if one is
-still there. The old map is parsed here rather than in the hook: keeping a YAML
+keys that have been renamed since (`remember_after` in 0.4.0, `enforce` in
+0.7.0), and convert a legacy `rules-map.yml` if one is still there. The old map is parsed here rather than in the hook: keeping a YAML
 parser alive in the injection path for a one-time job would be a permanent
 cost."""
 
 import os
 
-from .common import (HOOK, INTERVAL_KEY, LEGACY_INTERVAL_KEY, LEGACY_MAP_NAME,
+from .common import (BLOCK_KEY, HOOK, INTERVAL_KEY, LEGACY_BLOCK_KEY,
+                     LEGACY_INTERVAL_KEY, LEGACY_MAP_NAME,
                      MAX_ECHOED_NAME_CHARS, AdminError, NotARegularFile,
                      atomic_write, existing_is_not_a_rule, fail,
                      preserved_fields, read_regular_file, rules_in, scope_for,
@@ -145,13 +146,38 @@ def migrate_rule_names(scope_dir, config, force):
     return renamed
 
 
-def migrate_interval_key(scope_dir):
-    """Rewrite `remember_after:` as `remember_again_after:`. The hook honours
-    both, so this is tidying, not repair — but leaving the old spelling in place
-    means every rule file disagrees with every document that describes it."""
+def renamed_keys_in(fields):
+    """The key renames this rule is still behind on, as [(old, new)].
+
+    Two so far: `remember_after` -> `remember_again_after` (0.4.0) and
+    `enforce: deny` -> `block: true` (0.7.0). A rule already carrying the
+    current key is left alone — the author wrote it deliberately, and the hook
+    reads it first anyway. An old key with a value the hook never recognised
+    (`enforce: warn`) is left alone too: rewriting it as a block would turn a
+    setting that did nothing into one that denies tool calls, which is the one
+    thing a tidying step must never do. `validate` reports it instead."""
+    renames = []
+    if LEGACY_INTERVAL_KEY in fields and INTERVAL_KEY not in fields:
+        renames.append((LEGACY_INTERVAL_KEY, INTERVAL_KEY))
+    if (LEGACY_BLOCK_KEY in fields and BLOCK_KEY not in fields
+            and HOOK.block_of(fields)):
+        renames.append((LEGACY_BLOCK_KEY, BLOCK_KEY))
+    return renames
+
+
+def migrate_renamed_keys(scope_dir):
+    """Rewrite every frontmatter key that has been renamed since the rule was
+    written. The hook honours both spellings of each, so this is tidying, not
+    repair — but leaving an old spelling in place means the rule file disagrees
+    with every document that describes it.
+
+    All of a rule's renames are applied in ONE re-render: a second pass over
+    the same file would rewrite it twice for no gain, and `render_rule` is what
+    normalises the frontmatter either way."""
     rewritten = 0
     for name, fields, body in rules_in(scope_dir):
-        if LEGACY_INTERVAL_KEY not in fields or INTERVAL_KEY in fields:
+        renames = renamed_keys_in(fields)
+        if not renames:
             continue
         globs = HOOK.globs_of(fields)
         if not globs or not body:
@@ -159,10 +185,16 @@ def migrate_interval_key(scope_dir):
         # Every setting `render_rule` writes from an argument has to be handed
         # back to it: the filters are in RENDERED_KEYS, so `preserved_fields`
         # drops them, and a rewrite that did not pass them would silently widen
-        # the rule it was only supposed to retitle a key on.
+        # the rule it was only supposed to retitle a key on. `remember_after` is
+        # rendered from `submitted_interval`; the rest ride in `extra`, which is
+        # where the block key has to be swapped by hand.
+        extra = preserved_fields(fields, owned_last=True)
+        if (LEGACY_BLOCK_KEY, BLOCK_KEY) in renames:
+            extra.pop(LEGACY_BLOCK_KEY, None)
+            extra[BLOCK_KEY] = HOOK.BLOCK_TRUE_VALUES[0]
         try:
             rendered = render_rule(globs, body, submitted_interval(fields),
-                                   preserved_fields(fields, owned_last=True),
+                                   extra,
                                    excludes=HOOK.excludes_of(fields),
                                    tool=HOOK.tool_values_of(fields))
         except AdminError as exc:
@@ -173,7 +205,8 @@ def migrate_interval_key(scope_dir):
             continue
         atomic_write(os.path.join(scope_dir, name), rendered)
         rewritten += 1
-        print(f"ok: {name}: {LEGACY_INTERVAL_KEY} -> {INTERVAL_KEY}")
+        for old, new in renames:
+            print(f"ok: {name}: {old} -> {new}")
     return rewritten
 
 
@@ -307,7 +340,7 @@ def migrate_legacy_map(args, scope_dir, anchor, config):
 
 def cmd_migrate(args):
     """Bring a scope up to the current format, in idempotent steps: rename type
-    prefixes, rewrite the renamed frontmatter key, convert a legacy
+    prefixes, rewrite the renamed frontmatter keys, convert a legacy
     `rules-map.yml` if one is still there.
 
     The renames run FIRST on purpose. The map conversion is the step that can
@@ -320,7 +353,7 @@ def cmd_migrate(args):
         print("nothing to migrate: this scope has no rules directory")
         return
     changed = migrate_rule_names(scope_dir, config, args.force)
-    changed += migrate_interval_key(scope_dir)
+    changed += migrate_renamed_keys(scope_dir)
     changed += migrate_legacy_map(args, scope_dir, anchor, config)
     if not changed:
         print("nothing to migrate: this scope is already in the current format")

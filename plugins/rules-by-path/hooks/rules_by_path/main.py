@@ -10,10 +10,10 @@ from .constants import (DEFAULT_LANGUAGE, MAX_TOTAL_CHARS,
                         WRITE_TOOL_NAMES, warn)
 from .config import (language, load_config, max_rule_chars,
                      remember_again_after_default)
-from .context import build_context, build_deny_reason
+from .context import build_context, build_block_reason
 from .messages import LEGACY_NOTICE_KEY, SESSION_NOTICE_KEY, messages_for
 from .discovery import find_scopes, global_scope
-from .frontmatter import enforce_of, remember_again_after_of
+from .frontmatter import block_of, remember_again_after_of
 from .matching import (collect_candidates, extract_file_path,
                        is_inside_rules_dir)
 from .reinject import reinject_budget
@@ -51,22 +51,22 @@ def messages_for_scopes(scopes):
         return messages_for(DEFAULT_LANGUAGE)
 
 
-def enforce_denial(tool_name, scopes, candidates):
-    """(rule name, rule body) for the first `enforce: deny` rule that should
+def blocking_rule(tool_name, scopes, candidates):
+    """(rule name, rule body) for the first `block: true` rule that should
     block this tool call, or None when nothing should.
 
-    The hook never validates a rule's content, only its path, so `enforce:` is
+    The hook never validates a rule's content, only its path, so `block:` is
     not a policy engine — it is "the recommended hardening's `permissions.deny`,
     with the rule's own text as the reason a human or model reads for WHY, and
     without hand-authoring a permission entry".
 
     Trust gate, deliberately narrower than what merely MATCHED: only a rule
-    from the GLOBAL scope may ever deny. A project scope's rules arrive with
-    whatever repository is checked out, and honouring `enforce:` there would
+    from the GLOBAL scope may ever block. A project scope's rules arrive with
+    whatever repository is checked out, and honouring `block:` there would
     let a cloned repository deny the user's own tool calls — an escalation the
-    hook must never grant no matter how the frontmatter is worded. `enforce:`
+    hook must never grant no matter how the frontmatter is worded. `block:`
     on a project-scope rule is simply inert here, silently (no warn on this hot
-    path); `validate` is where it is pointed out, with `enforce --sync` as the
+    path); `validate` is where it is pointed out, with `block --sync` as the
     way to turn it into an actual native deny for that project."""
     if tool_name not in WRITE_TOOL_NAMES:
         return None
@@ -75,7 +75,7 @@ def enforce_denial(tool_name, scopes, candidates):
         return None  # no global scope in play this call; nothing to trust
     trusted_scope = owner[1]
     for scope_dir, _label, name, _glob, fields in candidates:
-        if scope_dir != trusted_scope or enforce_of(fields) != "deny":
+        if scope_dir != trusted_scope or not block_of(fields):
             continue
         result = read_rule_file(scope_dir, name)
         if result is None or not result[1]:
@@ -184,7 +184,7 @@ def main():
     # is then resolved from the trusted layers alone. Both halves are the same
     # rule: whether the machine owner's block fires, and what it says, may not
     # depend on a file that arrived with the repository being blocked.
-    denial = enforce_denial(tool_name, scopes, candidates)
+    denial = blocking_rule(tool_name, scopes, candidates)
     if denial is not None:
         name, body = denial
         # A project deliberately wins `language` everywhere else, so its rules
@@ -196,7 +196,7 @@ def main():
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "deny",
-                "permissionDecisionReason": build_deny_reason(
+                "permissionDecisionReason": build_block_reason(
                     name, body, messages_for_scopes([owner] if owner else [])),
             },
         }))

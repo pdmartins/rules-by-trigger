@@ -13,6 +13,13 @@ GLOB_KEYS = ("glob", "globs")
 EXCLUDE_KEYS = ("exclude", "excludes")
 TOOL_KEYS = ("tool", "tools")
 
+# The key that asks for a block, the spelling it carried until 0.7.0, and the
+# words that turn it on. `enforce: deny` is still read; nothing writes it.
+BLOCK_KEY = "block"
+BLOCK_TRUE_VALUES = ("true", "yes", "on")
+LEGACY_BLOCK_KEY = "enforce"
+LEGACY_BLOCK_VALUE = "deny"
+
 
 def unquote(value):
     value = value.strip()
@@ -236,26 +243,40 @@ def parse_remember_again_after(raw, source):
     return (value, unit)
 
 
-def enforce_of(fields):
-    """The rule's `enforce:` setting, or None when it declares none, or one
-    this function does not recognise.
-
-    Only `deny` is ever recognised, and any other value returns None exactly
-    like an absent key — this function never warns, unlike the rest of this
-    module. It runs on the hook's hot path (shared with the CLI, per this
-    module's own docstring), and a bogus `enforce:` value is `validate`'s to
-    report, where a human is actually listening, not something the hook should
-    complain about on every single tool call.
-
-    This says only what the frontmatter DECLARES. Whether the declaring scope
-    is trusted enough to act on it — the hook only ever honours `deny` from the
-    global scope — is a decision the caller makes, not this function."""
-    raw = fields.get("enforce")
+def first_value(fields, key):
+    """The scalar a key carries, or None. A key written with no value at all
+    parses to an empty list, and answers here exactly like an absent one."""
+    raw = fields.get(key)
     if isinstance(raw, list):
         raw = raw[0] if raw else None
-    if not isinstance(raw, str):
-        return None
-    return "deny" if raw.strip().lower() == "deny" else None
+    return raw if isinstance(raw, str) else None
+
+
+def block_of(fields):
+    """True when the rule asks for the writes it matches to be blocked.
+
+    `block: true` is the current spelling. `enforce: deny` is the one this
+    setting carried until 0.7.0 and is still honoured, silently, for the same
+    reason `remember_after` is: dropping a setting because a hand-written rule
+    uses the old name would change behaviour for someone who changed nothing.
+    `validate` is where the rename is pointed out, and `migrate` rewrites it.
+
+    The current key decides whenever it is present at all — a rule that says
+    `block: false` is not blocking, even alongside a leftover `enforce: deny`,
+    and a value neither spelling recognises answers like an absent key. This
+    function never warns, unlike the rest of this module: it runs on the hook's
+    hot path (shared with the CLI, per this module's own docstring), and a
+    bogus value is `validate`'s to report, where a human is actually listening,
+    not something the hook should complain about on every single tool call.
+
+    This says only what the frontmatter DECLARES. Whether the declaring scope
+    is trusted enough to act on it — the hook only ever honours a block from
+    the global scope — is a decision the caller makes, not this function."""
+    raw = first_value(fields, BLOCK_KEY)
+    if raw is not None:
+        return raw.strip().lower() in BLOCK_TRUE_VALUES
+    legacy = first_value(fields, LEGACY_BLOCK_KEY)
+    return legacy is not None and legacy.strip().lower() == LEGACY_BLOCK_VALUE
 
 
 def remember_again_after_of(fields):

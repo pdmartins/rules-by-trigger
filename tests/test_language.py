@@ -290,7 +290,7 @@ class InjectionTest(util.SandboxTestCase):
         util.write_config(self.scope, {"language": FORGED_LANGUAGE})
         proc = self.hook_for(tool="Write", session="deny")
         reason = util.hook_specific_output(proc).get("permissionDecisionReason")
-        self.assertEqual(reason, HOOK.ENFORCE_DENY_REASON_TEMPLATE.format(
+        self.assertEqual(reason, HOOK.BLOCK_REASON_TEMPLATE.format(
             name="BUSN_locked.md", body="Never touch this file."))
 
     def test_the_project_layer_does_not_choose_the_deny_reason_language(self):
@@ -305,7 +305,7 @@ class InjectionTest(util.SandboxTestCase):
         util.write_config(self.scope, {"language": "pt-BR"})
         proc = self.hook_for(tool="Write", session="deny-owner")
         reason = util.hook_specific_output(proc).get("permissionDecisionReason")
-        self.assertEqual(reason, HOOK.ENFORCE_DENY_REASON_TEMPLATE.format(
+        self.assertEqual(reason, HOOK.BLOCK_REASON_TEMPLATE.format(
             name="BUSN_locked.md", body="Never touch this file."))
 
     def test_the_global_layer_chooses_the_deny_reason_language(self):

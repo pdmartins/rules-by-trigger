@@ -5,11 +5,11 @@ drift apart."""
 import argparse
 import sys
 
-from .common import HOOK, AdminError, fail
+from .common import HOOK, AdminError, fail, warn
 from .config import cmd_config
 from .digest import cmd_digest
 from .doctor import cmd_doctor
-from .enforce import cmd_enforce
+from .block import cmd_block
 from .migrate import cmd_migrate
 from .move import ANCHOR_CHOICES, cmd_move
 from .rules import (cmd_add, cmd_init, cmd_list, cmd_remove, cmd_show,
@@ -23,13 +23,21 @@ COMMANDS = {"init": cmd_init, "list": cmd_list, "show": cmd_show,
             "which": cmd_which, "add": cmd_add, "update": cmd_update,
             "remove": cmd_remove, "validate": cmd_validate,
             "config": cmd_config, "migrate": cmd_migrate,
-            "enforce": cmd_enforce, "status": cmd_status,
+            "block": cmd_block, "status": cmd_status,
             "doctor": cmd_doctor, "move": cmd_move, "digest": cmd_digest}
+
+# `block` answered to `enforce` until 0.7.0, alongside the frontmatter key of
+# the same name. Kept as an alias — and out of COMMANDS, so `--help` teaches
+# only the current name — because the old one is written into scripts and into
+# skill instructions that were shipped, and failing them on "invalid choice"
+# helps nobody. It warns rather than dying, and is resolved before validation
+# so every message below names the command the user actually typed.
+COMMAND_ALIASES = {"enforce": "block"}
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=list(COMMANDS))
+    parser.add_argument("command", choices=list(COMMANDS) + list(COMMAND_ALIASES))
     scope = parser.add_mutually_exclusive_group(required=True)
     scope.add_argument("--root", help="project root (the folder containing .claude/)")
     scope.add_argument("--global", dest="use_global", action="store_true",
@@ -76,12 +84,18 @@ def main():
                         help="doctor: remove the deny entries and cached state "
                              "the plugin left behind; rule directories are kept")
     parser.add_argument("--list", action="store_true",
-                        help="enforce: show enforce: deny rules and their native "
+                        help="block: show block: true rules and their native "
                              "deny equivalents")
     parser.add_argument("--sync", action="store_true",
-                        help="enforce: write the native deny entries a project's "
-                             "enforce: deny rules need into its settings.json")
+                        help="block: write the native deny entries a project's "
+                             "block: true rules need into its settings.json")
     args = parser.parse_args()
+
+    if args.command in COMMAND_ALIASES:
+        current = COMMAND_ALIASES[args.command]
+        warn(f"{args.command!r} is the name {current!r} carried until 0.7.0; "
+             f"use {current!r}")
+        args.command = current
 
     if args.command == "add" and not args.glob:
         fail("'add' requires --glob")
@@ -123,11 +137,11 @@ def main():
         fail("'doctor' takes --fix OR --uninstall, not both")
     if (args.sessions or args.max_chars) and args.command != "digest":
         fail(f"'{args.command}' takes no --sessions/--max-chars; they belong to `digest`")
-    if args.command == "enforce":
+    if args.command == "block":
         if not (args.list or args.sync):
-            fail("'enforce' requires --list or --sync")
+            fail("'block' requires --list or --sync")
         if args.list and args.sync:
-            fail("'enforce' takes --list OR --sync, not both")
+            fail("'block' takes --list OR --sync, not both")
 
     COMMANDS[args.command](args)
 

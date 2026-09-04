@@ -27,7 +27,7 @@ at the 400-line ceiling this package holds every module to.
 import unicodedata
 
 from .constants import (ADMIN_COMMAND, BRAZILIAN_PORTUGUESE, DEFAULT_LANGUAGE,
-                        ENFORCE_DENY_REASON_TEMPLATE, HARNESS_MARKER,
+                        BLOCK_REASON_TEMPLATE, HARNESS_MARKER,
                         LANGUAGE_EXTRA_CHARS, LANGUAGE_FORBIDDEN_CHARS,
                         LANGUAGE_KEY, LEGACY_NOTICE, MAX_LANGUAGE_CHARS,
                         SESSION_NOTICE, SUPERSEDE_NOTICE, TRUNCATION_NOTICES,
@@ -41,7 +41,7 @@ LEGACY_NOTICE_KEY = "LEGACY_NOTICE"
 SESSION_NOTICE_KEY = "SESSION_NOTICE"
 TRUNCATION_NOTICE_KEY = "TRUNCATION_NOTICE"
 SUPERSEDE_NOTICE_KEY = "SUPERSEDE_NOTICE"
-ENFORCE_DENY_REASON_TEMPLATE_KEY = "ENFORCE_DENY_REASON_TEMPLATE"
+ENFORCE_DENY_REASON_TEMPLATE_KEY = "BLOCK_REASON_TEMPLATE"
 MESSAGE_KEYS = (LEGACY_NOTICE_KEY, SESSION_NOTICE_KEY, TRUNCATION_NOTICE_KEY,
                 SUPERSEDE_NOTICE_KEY, ENFORCE_DENY_REASON_TEMPLATE_KEY)
 
@@ -63,7 +63,7 @@ MESSAGES = {
         SESSION_NOTICE_KEY: SESSION_NOTICE,
         TRUNCATION_NOTICE_KEY: TRUNCATION_NOTICES[DEFAULT_LANGUAGE],
         SUPERSEDE_NOTICE_KEY: SUPERSEDE_NOTICE,
-        ENFORCE_DENY_REASON_TEMPLATE_KEY: ENFORCE_DENY_REASON_TEMPLATE,
+        ENFORCE_DENY_REASON_TEMPLATE_KEY: BLOCK_REASON_TEMPLATE,
     },
     BRAZILIAN_PORTUGUESE: {
         LEGACY_NOTICE_KEY: (
@@ -94,7 +94,7 @@ MESSAGES = {
         ),
         ENFORCE_DENY_REASON_TEMPLATE_KEY: (
             "rules-by-path: esta chamada de ferramenta está bloqueada pela "
-            "regra imposta {name!r} (escopo global). O texto da própria regra é "
+            "regra {name!r} (escopo global). O texto da própria regra é "
             "o motivo:\n\n{body}"
         ),
     },

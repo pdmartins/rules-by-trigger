@@ -23,14 +23,14 @@ HOOK_PATH = os.path.join(
 # writes from its own arguments, so a copy arriving in a submitted rule is
 # dropped rather than written a second time — `remember_after` is the name
 # `remember_again_after` carried until 0.4.0, and keeping both would leave the
-# setting alive under two names forever. `description` and `enforce` are owned
-# too (so `validate` does not report them as unknown keys) but are carried
-# through verbatim, like any key this tool knows nothing about. The rest of the
-# set is derived from the hook further down, where HOOK exists.
+# setting alive under two names forever. `description`, `block` and the name
+# `block` carried until 0.7.0 are owned too (so `validate` does not report them
+# as unknown keys) but are carried through verbatim, like any key this tool
+# knows nothing about. The rest of the set is derived from the hook further
+# down, where HOOK exists.
 INTERVAL_KEY = "remember_again_after"
 LEGACY_INTERVAL_KEY = "remember_after"
 DESCRIPTION_KEY = "description"
-ENFORCE_KEY = "enforce"
 
 
 class AdminError(Exception):
@@ -83,9 +83,11 @@ LEGACY_MAP_NAME = HOOK.LEGACY_MAP_NAME
 GLOB_KEY = HOOK.GLOB_KEYS[0]
 EXCLUDE_KEY = HOOK.EXCLUDE_KEYS[0]
 TOOL_KEY = HOOK.TOOL_KEYS[0]
+BLOCK_KEY = HOOK.BLOCK_KEY
+LEGACY_BLOCK_KEY = HOOK.LEGACY_BLOCK_KEY
 RENDERED_KEYS = ({INTERVAL_KEY, LEGACY_INTERVAL_KEY} | set(HOOK.GLOB_KEYS)
                  | set(HOOK.EXCLUDE_KEYS) | set(HOOK.TOOL_KEYS))
-OWN_KEYS = RENDERED_KEYS | {DESCRIPTION_KEY, ENFORCE_KEY}
+OWN_KEYS = RENDERED_KEYS | {DESCRIPTION_KEY, BLOCK_KEY, LEGACY_BLOCK_KEY}
 
 
 def scope_for(args):
@@ -229,10 +231,12 @@ def check_line_value(label, value):
 def preserved_fields(fields, owned_last=False):
     """The frontmatter `render_rule` must carry through unchanged: everything it
     does not write from its own arguments. That includes `description` and
-    `enforce`, which this tool knows about but never derives — a show -> edit ->
-    update round trip has to return them exactly as they arrived.
+    `block`, which this tool knows about but never derives — a show -> edit ->
+    update round trip has to return them exactly as they arrived. The pre-0.7.0
+    `enforce:` spelling rides along in the same position, so a rule still
+    carrying it survives a round trip until `migrate` rewrites it.
 
-    `owned_last` writes those two after the keys this tool knows nothing about,
+    `owned_last` writes those after the keys this tool knows nothing about,
     which is the order `update` and `migrate` have always produced; `add` keeps
     the order the author submitted. Same keys either way, so the difference is
     only where they land in the frontmatter of a rewritten file."""
@@ -240,7 +244,7 @@ def preserved_fields(fields, owned_last=False):
         return {key: value for key, value in fields.items()
                 if key not in RENDERED_KEYS}
     extra = {key: value for key, value in fields.items() if key not in OWN_KEYS}
-    for key in (DESCRIPTION_KEY, ENFORCE_KEY):
+    for key in (DESCRIPTION_KEY, BLOCK_KEY, LEGACY_BLOCK_KEY):
         if key in fields:
             extra[key] = fields[key]
     return extra

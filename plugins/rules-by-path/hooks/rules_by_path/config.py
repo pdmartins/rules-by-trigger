@@ -241,7 +241,7 @@ def load_layer(path, trusted):
 
     The blanket guard is this module's docstring promise made real, and it is
     load-bearing rather than defensive habit: a layer is data that arrived with
-    a repository, and the hook decides an `enforce: deny` on the way past here.
+    a repository, and the hook decides a `block: true` on the way past here.
     An exception escaping one layer would therefore not merely cost that
     layer's settings — it would cancel the injection AND the denial, turning an
     unreadable file into a way to switch the machine owner's own block off.

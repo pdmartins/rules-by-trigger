@@ -1,10 +1,10 @@
-"""`enforce`: bridging `enforce: deny` rules to Claude Code's own
+"""`block`: bridging `block: true` rules to Claude Code's own
 `permissions.deny`.
 
-The hook only ever honours `enforce: deny` from the GLOBAL scope (see
-`HOOK.enforce_denial` — a project rule is untrusted repository content, and
+The hook only ever honours `block: true` from the GLOBAL scope (see
+`HOOK.blocking_rule` — a project rule is untrusted repository content, and
 letting it deny the user's own tool calls would be an escalation). A project
-rule that declares `enforce: deny` therefore needs a NATIVE deny entry to
+rule that declares `block: true` therefore needs a NATIVE deny entry to
 actually block anything: `--list` shows what that entry would be, `--sync`
 writes it into the project's own `.claude/settings.json`, reusing the same
 merge-don't-duplicate approach `/rules-by-path:setup` uses for the user's
@@ -19,16 +19,16 @@ from .common import HOOK, atomic_write, fail, rules_in, scope_for
 SETTINGS_RELPATH = os.path.join(".claude", "settings.json")
 
 
-def enforce_rules(scope_dir):
+def blocking_rules(scope_dir):
     """[(name, globs, excludes)] for every rule in the scope that declares
-    `enforce: deny`, in the order `rules_in` already sorts them.
+    `block: true`, in the order `rules_in` already sorts them.
 
     The excludes ride along because a native deny entry cannot express one:
     `--list` has to say so, rather than let a synced entry silently deny more
     than the rule it came from."""
     return [(name, HOOK.globs_of(fields), HOOK.excludes_of(fields))
             for name, fields, _body in rules_in(scope_dir)
-            if HOOK.enforce_of(fields) == "deny"]
+            if HOOK.block_of(fields)]
 
 
 def deny_entry_for(glob):
@@ -99,15 +99,15 @@ def existing_deny_entries(settings_path):
     return deny if isinstance(deny, list) else []
 
 
-def cmd_enforce_list(scope_dir, anchor, is_global):
-    rules = enforce_rules(scope_dir)
+def cmd_block_list(scope_dir, anchor, is_global):
+    rules = blocking_rules(scope_dir)
     if not rules:
-        print("(no enforce: deny rules in this scope)")
+        print("(no blocking rules in this scope)")
         return
     settings_path = os.path.join(anchor, SETTINGS_RELPATH)
     existing = set(existing_deny_entries(settings_path))
     for name, globs, excludes in rules:
-        print(f"{name}  enforce: deny")
+        print(f"{name}  block: true")
         if not globs:
             print("  (no glob declared — never matches, so never denies)")
             continue
@@ -122,25 +122,25 @@ def cmd_enforce_list(scope_dir, anchor, is_global):
             elif entry in existing:
                 status = f"synced in {settings_path}"
             else:
-                status = "NOT synced — run `enforce --sync` to add it"
+                status = "NOT synced — run `block --sync` to add it"
             print(f"  {entry}  [{status}]")
 
 
-def cmd_enforce_sync(scope_dir, anchor, is_global):
+def cmd_block_sync(scope_dir, anchor, is_global):
     if is_global:
-        # A global `enforce: deny` rule is already honoured directly by the
-        # hook (see HOOK.enforce_denial) — syncing it would write a SECOND,
+        # A global `block: true` rule is already honoured directly by the
+        # hook (see HOOK.blocking_rule) — syncing it would write a SECOND,
         # redundant mechanism into a file (~/.claude/settings.json) that has
         # nothing to do with any one project. --sync exists for the case the
         # hook cannot cover: a project rule, whose scope is untrusted.
-        fail("'enforce --sync' is for a project scope (--root); a global "
-             "enforce: deny rule is already honoured by the hook directly, so "
+        fail("'block --sync' is for a project scope (--root); a global "
+             "block: true rule is already honoured by the hook directly, so "
              "there is nothing to sync. Pass --root <project-root> for the "
-             "project whose enforce rules need a native deny of their own")
-    rules = enforce_rules(scope_dir)
+             "project whose blocking rules need a native deny of their own")
+    rules = blocking_rules(scope_dir)
     entries = deny_entries(rules)
     if not entries:
-        print("(no enforce: deny rules to sync)")
+        print("(no blocking rules to sync)")
         return
     settings_path = os.path.join(anchor, SETTINGS_RELPATH)
     data = read_settings_for_sync(settings_path)
@@ -162,9 +162,9 @@ def cmd_enforce_sync(scope_dir, anchor, is_global):
         print(f"  {entry}")
 
 
-def cmd_enforce(args):
+def cmd_block(args):
     scope_dir, anchor = scope_for(args)
     if args.sync:
-        cmd_enforce_sync(scope_dir, anchor, args.use_global)
+        cmd_block_sync(scope_dir, anchor, args.use_global)
     else:
-        cmd_enforce_list(scope_dir, anchor, args.use_global)
+        cmd_block_list(scope_dir, anchor, args.use_global)

@@ -90,7 +90,7 @@ def rule_entry(name, fields, body, config, usage):
         "tools": HOOK.tools_of(fields),
         "remember_again_after": raw_interval,
         "remember_again_after_parsed": list(interval) if interval else None,
-        "enforce": HOOK.enforce_of(fields),
+        "block": HOOK.block_of(fields),
         "chars": len(body),
         "usage": public_usage(usage),
         "_fields": fields,

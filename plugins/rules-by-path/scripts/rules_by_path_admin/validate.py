@@ -7,9 +7,9 @@ import os
 import re
 import sys
 
-from .common import (ENFORCE_KEY, EXCLUDE_KEY, HOOK, INTERVAL_KEY,
-                     LEGACY_INTERVAL_KEY, LEGACY_MAP_NAME, OWN_KEYS, TOOL_KEY,
-                     other_markdown_in, rules_in, scope_for)
+from .common import (BLOCK_KEY, EXCLUDE_KEY, HOOK, INTERVAL_KEY,
+                     LEGACY_BLOCK_KEY, LEGACY_INTERVAL_KEY, LEGACY_MAP_NAME,
+                     OWN_KEYS, TOOL_KEY, other_markdown_in, rules_in, scope_for)
 from .config import TYPE_SEPARATOR, config_for, name_convention, split_type_prefix
 
 # Bounds for the "should this rule be split?" check (CLI only, never the hook).
@@ -166,36 +166,47 @@ def filter_notes(name, fields):
             f"ignored, so the rule applies to every tool call it matches"]
 
 
-def enforce_notes(name, fields, is_global):
-    """Notes about a rule's `enforce:` setting: a value the hook does not
-    recognise, or a `deny` declared somewhere the hook will never honour it.
+def block_notes(name, fields, is_global):
+    """Notes about a rule's `block:` setting: the spelling it carried until
+    0.7.0, a value the hook does not recognise, or a block declared somewhere
+    the hook will never honour it.
 
-    `enforce: deny` only ever binds from the GLOBAL scope (see
-    `HOOK.enforce_denial`): a project rule arrives with whatever repository is
-    checked out, and letting it deny the user's own tool calls would be an
-    escalation. This is where that trust gate is explained to a human, with
-    the way around it — a native deny via `enforce --sync` — spelled out."""
-    raw = fields.get(ENFORCE_KEY)
-    if raw in (None, [], ""):
+    A block only ever binds from the GLOBAL scope (see `HOOK.blocking_rule`): a
+    project rule arrives with whatever repository is checked out, and letting it
+    deny the user's own tool calls would be an escalation. This is where that
+    trust gate is explained to a human, with the way around it — a native deny
+    via `block --sync` — spelled out."""
+    declared = HOOK.first_value(fields, BLOCK_KEY)
+    legacy = HOOK.first_value(fields, LEGACY_BLOCK_KEY)
+    if declared is None and legacy is None:
         return []
-    if isinstance(raw, list):
-        raw = raw[0] if raw else None
-    if HOOK.enforce_of(fields) is None:
-        return [f"{name}: enforce: {str(raw)[:32]!r} is not understood — only "
-                f"'deny' is honoured; ignored"]
+    notes = []
+    if declared is None:
+        notes.append(f"{name}: {LEGACY_BLOCK_KEY}: {HOOK.LEGACY_BLOCK_VALUE} is "
+                     f"the spelling this setting carried until 0.7.0 — still "
+                     f"honoured, but `{BLOCK_KEY}: {HOOK.BLOCK_TRUE_VALUES[0]}` "
+                     f"is the name now; `migrate` rewrites it")
+    if not HOOK.block_of(fields):
+        key = LEGACY_BLOCK_KEY if declared is None else BLOCK_KEY
+        raw = legacy if declared is None else declared
+        accepted = "/".join(HOOK.BLOCK_TRUE_VALUES) if declared is not None \
+            else HOOK.LEGACY_BLOCK_VALUE
+        return notes + [f"{name}: {key}: {str(raw)[:32]!r} is not understood — "
+                        f"only {accepted} turns a block on; ignored"]
     if HOOK.tools_of(fields) == (HOOK.TOOL_KIND_READ,):
-        # Both settings are honoured, and together they cancel: `deny` only
+        # Both settings are honoured, and together they cancel: a block only
         # ever fires on a write, and this rule has just excused itself from
         # every write there is.
-        return [f"{name}: enforce: deny on a {TOOL_KEY}: {HOOK.TOOL_KIND_READ} "
-                f"rule never fires — a deny only ever acts on a write, and "
-                f"reads are never denied"]
+        return notes + [f"{name}: {BLOCK_KEY} on a {TOOL_KEY}: "
+                        f"{HOOK.TOOL_KIND_READ} rule never fires — a block only "
+                        f"ever acts on a write, and reads are never blocked"]
     if not is_global:
-        return [f"{name}: enforce: deny only takes effect from the GLOBAL "
-                f"scope (project rules are untrusted input); the hook ignores "
-                f"it here. Run `enforce --sync` to write an equivalent native "
-                f"deny into this project's permissions instead"]
-    return []
+        return notes + [f"{name}: {BLOCK_KEY} only takes effect from the GLOBAL "
+                        f"scope (project rules are untrusted input); the hook "
+                        f"ignores it here. Run `block --sync` to write an "
+                        f"equivalent native deny into this project's "
+                        f"permissions instead"]
+    return notes
 
 
 def reinforcement_notes(name, body, fields, config):
@@ -232,8 +243,8 @@ def scope_findings(scope_dir, anchor=None, config=None, is_global=False):
     same findings into its own report without capturing another command's
     output.
 
-    `is_global` decides whether an `enforce: deny` rule here would actually be
-    honoured by the hook — see `enforce_notes` — and defaults to False so a
+    `is_global` decides whether a `block: true` rule here would actually be
+    honoured by the hook — see `block_notes` — and defaults to False so a
     caller that has not been updated to pass it merely loses that one note
     rather than misreporting a global scope as a project one."""
     config = config or {}
@@ -284,7 +295,7 @@ def scope_findings(scope_dir, anchor=None, config=None, is_global=False):
         notes.extend(split_candidates(name, globs, body, anchor))
         notes.extend(reinforcement_notes(name, body, fields, config))
         notes.extend(filter_notes(name, fields))
-        notes.extend(enforce_notes(name, fields, is_global))
+        notes.extend(block_notes(name, fields, is_global))
     convention = name_convention(config)
     off_convention = []
     if convention:

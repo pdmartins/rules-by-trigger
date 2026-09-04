@@ -40,8 +40,8 @@ def neutralize(content):
         for line in content.split("\n"))
 
 
-def build_deny_reason(name, body, messages):
-    """The reason an `enforce: deny` rule reports for the tool call it blocked,
+def build_block_reason(name, body, messages):
+    """The reason a `block: true` rule reports for the tool call it blocked,
     with the rule's own text as the WHY a human or model reads.
 
     Assembled here rather than by the caller so that every path putting rule

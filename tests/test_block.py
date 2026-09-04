@@ -295,6 +295,14 @@ class AdminBlockTest(util.SandboxTestCase):
         self.assertIn("block", proc.stderr)
         self.assertIn("until 0.7.0", proc.stderr)
 
+    def test_the_alias_resolves_before_the_flag_validation(self):
+        """The order matters for the message, not just the dispatch: validation
+        runs on the resolved name, so a user who typed the old one is told to
+        pass --list/--sync to `block`, never to a command they never typed."""
+        proc = self.admin("enforce", "--root", self.proj)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("'block' requires --list or --sync", proc.stderr)
+
     def test_show_update_round_trip_preserves_block(self):
         self.admin("add", "--root", self.proj, "--rule", "BUSN_b.md",
                    "--glob", "infra/**",

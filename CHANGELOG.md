@@ -5,6 +5,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
+### Added
+
+- `improve` now weighs each rule by what it actually carries: whether Claude
+  would have known it from the files it was going to read anyway. A rule
+  stating something the model already knows buys adherence to your spelling of
+  a convention and nothing else — worth keeping only where the agent deviates,
+  which the usage note and the session evidence can answer. A rule carrying an
+  invariant enforced in another folder, or a gotcha whose reason is nowhere
+  near the file, is the content that earns its place in context.
+
 ### Changed
 
 - `enforce: deny` is now **`block: true`**, and the `enforce` admin subcommand

@@ -40,6 +40,20 @@ Order by payoff; skip categories with nothing to say.
 - **Prune** — usage note "never injected since …": the glob matches nothing
   here, or nobody needs the rule. Prove it with `which --path` on a file it
   should govern; then `remove`, or fix the glob with `update --glob`.
+- **Worth the budget** — ask of each rule: *would Claude have known this
+  from the files it was going to read anyway?*
+  - **Already known** ("validate input", "no `var`"): it buys adherence to
+    your spelling of a convention, which is legitimate — but only where the
+    agent actually deviates. Evidence: the usage note, plus whether the user
+    corrected that topic in a session the rule was already injected in. Never
+    fired and never corrected → propose `remove`.
+  - **Discoverable next door** ("this folder calls `httpx`, not `requests`"):
+    it buys speed, not knowledge. Keep it to a line, or fold it into a
+    neighbouring rule instead of paying for a file of its own.
+  - **Not discoverable** — an invariant enforced in another folder, a gotcha
+    whose reason is nowhere near the file, "this looks wrong and here is why
+    it is not": this is what earns the injection. When one rule mixes the
+    three, `show` it and rewrite so this part leads.
 - **Narrow** — usage note "always under X while its glob reaches wider":
   `update --rule '<name>' --glob '<the narrower glob it prints>'`.
 - **Split** — validator note "mentions … narrower than it", or a body over

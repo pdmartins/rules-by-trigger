@@ -11,11 +11,15 @@ import re
 import stat
 import time
 
-from .constants import (DEFAULT_REMEMBER_AGAIN_CALLS, MAX_SESSION_ID_CHARS,
-                        STATE_MAX_AGE_SECONDS, STATE_READ_CHUNK_BYTES,
-                        STATS_FILE_NAME, TOKEN_REGRESSION_SLACK,
-                        TRANSCRIPT_TAIL_BYTES, coerce_int, warn)
+from .constants import (MAX_SESSION_ID_CHARS, STATE_MAX_AGE_SECONDS,
+                        STATE_READ_CHUNK_BYTES, STATS_FILE_NAME,
+                        TOKEN_REGRESSION_SLACK, TRANSCRIPT_TAIL_BYTES,
+                        coerce_int, warn)
 from .discovery import is_safely_owned
+# Re-exported: `is_due` and `pop_superseded_entries` moved to `due.py` when this
+# module reached its line ceiling, and their callers still address them here.
+from .due import is_due, pop_superseded_entries  # noqa: F401
+from .written import coerce_written
 
 
 def lock_exclusive(fd):
@@ -185,17 +189,26 @@ def open_state(state_path):
 
     state = {"calls": int,
              "seen": {dedup_key: [call number, context tokens or None,
-                                  reinjections already sent]}}.
+                                  reinjections already sent]},
+             "written": [absolute path, ...]}.
 
     Both measures are recorded because rules choose their own unit: one rule may
     ask to be repeated every 30k tokens and another every 25 calls, in the same
     session. Storing only the session's preferred unit would silently ignore
     whichever rule disagreed with it.
 
+    `written` is the third key and answers a different question: which files
+    this turn has written since the last verification ran. It lives in the
+    session state because `Stop`, the only hook that closes a turn, is told
+    nothing about files, so a `verify:` command can only learn what to check
+    from the trail the write path leaves here (see `written.py`). A missing or
+    malformed value is coerced to [] like the rest, so a state file nobody can
+    parse costs a verification rather than the turn.
+
     Parallel tool calls each spawn a hook process, so the read-decide-write
     cycle is serialized; on any failure the hook proceeds statelessly rather
     than blocking the tool call."""
-    empty = {"calls": 0, "seen": {}}
+    empty = {"calls": 0, "seen": {}, "written": []}
     if state_path is None:
         return None, empty
     try:
@@ -245,7 +258,8 @@ def open_state(state_path):
                 entry = coerce_seen_entry(entry_value)
                 if entry is not None:
                     seen[entry_key] = entry
-        return fd, {"calls": calls, "seen": seen}
+        written = coerce_written(data.get("written"))
+        return fd, {"calls": calls, "seen": seen, "written": written}
     except Exception as exc:
         warn(f"failed reading state {state_path}: {exc}")
         return None, empty
@@ -325,60 +339,3 @@ def detect_context_regression(state, current_tokens):
         seen.clear()
         return True
     return False
-
-
-def pop_superseded_entries(seen, scope_dir, name, digest):
-    """Remove and report whether `seen` held an entry for this same rule — same
-    scope directory and name — under a DIFFERENT content hash. A hit means the
-    rule was edited since that entry was recorded: the dedup key hashes the
-    body, so the new text is injected on its own regardless, but the earlier
-    wording stays in the transcript as a stale, contradictory instruction
-    unless something clears it out. This is that cleanup.
-
-    Only called once the caller has committed to injecting this delivery, so
-    an edit that gets deferred (the char budget was full this call, say) is
-    left alone — the caller detects the same edit again on the next attempt
-    instead of losing the record of it. Left in place, a stale entry no longer
-    drives any scheduling decision of its own (nothing keys off a digest that
-    stopped matching), but it also never goes away: a rule edited several
-    times in one session would otherwise leave one dead entry behind per edit
-    for the rest of the session.
-    """
-    prefix = f"{os.path.realpath(scope_dir)}::{name}::"
-    current_key = prefix + digest
-    stale = [key for key in seen if key.startswith(prefix) and key != current_key]
-    for key in stale:
-        del seen[key]
-    return bool(stale)
-
-
-def is_due(last_seen, call_number, tokens, interval, budget):
-    """Whether a rule already delivered this session should be sent again.
-
-    The question is only ever asked when the rule's glob matched the file being
-    touched, so covering the distance is necessary but not sufficient: a rule
-    governing a folder nobody opens again is never repeated, however long the
-    session runs. Nor is it sufficient once `budget` reinjections have already
-    been spent on this rule this session — only prohibition-style constraints
-    are known to decay under long context (arXiv:2604.20911), and every
-    reinjection adds one more instruction competing for the model's attention
-    regardless of type (arXiv:2608.02639), so repetition is capped rather than
-    left to run for the rest of a very long session.
-
-    `interval` is (value, unit) as parsed from `remember_again_after`; a value of 0
-    means never. A token distance in a session that cannot count tokens falls
-    back to the default call count, which prefers a coarser schedule to silence.
-    Converting between tokens and calls is never attempted — there is no
-    faithful rate, and inventing one would misreport precision.
-    """
-    value, unit = interval
-    if not value:
-        return False
-    last_calls, last_tokens, reinjections = last_seen
-    if reinjections >= budget:
-        return False
-    if unit == "calls":
-        return call_number - last_calls >= value
-    if tokens is None or last_tokens is None:
-        return call_number - last_calls >= DEFAULT_REMEMBER_AGAIN_CALLS
-    return tokens - last_tokens >= value

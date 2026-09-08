@@ -22,6 +22,7 @@ from .state import (cleanup_stale_state, close_state, context_size,
                     detect_context_regression, is_due, open_state,
                     pop_superseded_entries, save_state, state_file_for)
 from .stats import record_injections
+from .written import record_written
 
 
 def config_for_scopes(scopes):
@@ -208,6 +209,16 @@ def main():
     try:
         state["calls"] = state.get("calls", 0) + 1
         call_number = state["calls"]
+        # Every write is noted, whether or not a rule matched it here: the rule
+        # whose `verify:` covers this file is selected at the end of the turn,
+        # by the Stop hook, and that selection ignores the `tool:` filter this
+        # call was matched under — so what matched HERE says nothing about what
+        # will need verifying THERE. A denied write never reaches this line
+        # (the block returned above): a path that was refused was never
+        # written. Recording one string is all this costs; it must stay that
+        # cheap, because it happens on the fast path below as well.
+        if tool_name in WRITE_TOOL_NAMES:
+            record_written(state, abs_path)
         # Nothing this file touches has a rule: the call counter still advances
         # — it is how `remember_again_after` measures distance in calls — but no
         # config.json, no transcript and no rule file is read. That is the shape

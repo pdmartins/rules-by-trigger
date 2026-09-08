@@ -29,6 +29,36 @@ TOOL_KINDS = (TOOL_KIND_READ, TOOL_KIND_WRITE)
 TOOL_KIND_ANY = "any"
 TOOL_ANY_VALUES = (TOOL_KIND_ANY, "all")
 
+# `verify:` — the commands a rule declares, run at the end of a turn in which a
+# file the rule covers was written (see CONTEXT.md, "Verification").
+VERIFY_KEY = "verify"
+# A rule declares a check, not a build pipeline: past this many commands the
+# turn ends waiting on a queue nobody reads, so the extra ones are dropped with
+# a warning rather than run.
+MAX_VERIFY_COMMANDS = 8
+# One command is a shell command line, not a program. Generous enough for a
+# test invocation with its flags and paths, short enough that a rule cannot
+# bury a script in its own frontmatter where nobody reads it.
+MAX_VERIFY_COMMAND_CHARS = 512
+# The word that turns the key off out loud, so the admin CLI has a value for
+# clearing it (`--verify none`) instead of a magic empty string — exactly like
+# `--tool any`. Honoured when reading too, so a hand-written `verify: none`
+# means what it says rather than naming a command called `none`.
+VERIFY_NONE = "none"
+# Wall clock one verification command gets before it is killed and reported as
+# a failure. Long enough for a folder's test suite, short enough that a command
+# waiting on input cannot hold the turn open (the `Stop` hook's own timeout in
+# hooks.json is set well above this, so the hook always outlives its commands).
+VERIFY_COMMAND_TIMEOUT_SECONDS = 120
+# How much of a failed command's output goes back to Claude. Enough to carry a
+# failing assertion and its traceback; a whole build log would cost more context
+# than the failure it reports.
+VERIFY_OUTPUT_TAIL_LINES = 60
+# How many written paths one session remembers between verifications. The list
+# is session state on disk like everything else here, so it is bounded: without
+# a cap a long session writing thousands of files would grow it without end.
+MAX_WRITTEN_PATHS = 512
+
 # How long a rule may be. Both are defaults: `config.json` may set `rule_size`
 # per user and per project (see config.py). A rule is resent WHOLE every time it
 # is repeated, so length is paid again at every reminder — which is why the hard
@@ -43,8 +73,10 @@ MIN_CONFIGURABLE_RULE_CHARS = 200
 MAX_RULES_PER_SCOPE = 256
 # The hook only reads this many bytes to find a rule's closing `---`, so the
 # admin must refuse to write a frontmatter larger than this (otherwise a rule it
-# accepts becomes invisible here). Sized to hold the maximum a rule may legally
-# declare: MAX_GLOBS_PER_RULE globs of up to MAX_GLOB_CHARS each, plus keys.
+# accepts becomes invisible here). Sized for what a rule realistically declares:
+# MAX_GLOBS_PER_RULE globs of up to MAX_GLOB_CHARS each, plus keys. A rule that
+# maxes out several keys at once (every glob AND every verify command) does not
+# fit, and is refused at write time rather than written and never read.
 MAX_FRONTMATTER_BYTES = 8_192
 MAX_GLOB_CHARS = 256
 MAX_GLOBS_PER_RULE = 16

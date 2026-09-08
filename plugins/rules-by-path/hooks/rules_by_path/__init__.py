@@ -63,6 +63,8 @@ Layout — one concern per module, none over 400 lines:
     rules.py        rule names, reading a rule file, indexing a scope
     matching.py     the touched path, and the rules it matches
     state.py        per-session dedup, context size, repeat scheduling
+    due.py          when a delivered rule is due again, and edit cleanup
+    written.py      the paths written since the last verification
     context.py      assembling the injected text, defanging forged framing
     main.py         the three entry points Claude Code calls
 
@@ -90,6 +92,8 @@ from .constants import (ADMIN_COMMAND, BRAZILIAN_PORTUGUESE,
                         MAX_REINJECTIONS_PER_RULE,
                         MAX_RULE_CHARS, MAX_RULE_NAME_CHARS, MAX_RULE_TYPES,
                         MAX_RULES_PER_SCOPE, MAX_SCOPES, MAX_SESSION_ID_CHARS,
+                        MAX_VERIFY_COMMAND_CHARS, MAX_VERIFY_COMMANDS,
+                        MAX_WRITTEN_PATHS,
                         MAX_TOTAL_CHARS, MAX_TYPE_PREFIX_CHARS,
                         MAX_TYPE_TEXT_CHARS, MIN_CONFIGURABLE_RULE_CHARS,
                         MIN_REMEMBER_AGAIN_CALLS,
@@ -104,6 +108,8 @@ from .constants import (ADMIN_COMMAND, BRAZILIAN_PORTUGUESE,
                         TOOL_KIND_READ, TOOL_KIND_WRITE, TOOL_KINDS,
                         TRANSCRIPT_TAIL_BYTES,
                         TRUNCATION_NOTICE, TRUNCATION_NOTICES,
+                        VERIFY_COMMAND_TIMEOUT_SECONDS, VERIFY_KEY,
+                        VERIFY_NONE, VERIFY_OUTPUT_TAIL_LINES,
                         WRITE_TOOL_NAMES, warn)
 from .messages import (ENFORCE_DENY_REASON_TEMPLATE_KEY,
                        LANGUAGE_NORMAL_FORM, LEGACY_NOTICE_KEY,
@@ -118,7 +124,7 @@ from .frontmatter import (BLOCK_KEY, BLOCK_TRUE_VALUES, EXCLUDE_KEYS,
                           first_value, glob_list, globs_of, parse_frontmatter,
                           parse_remember_again_after, parse_size,
                           remember_again_after_of, tool_values_of, tools_of,
-                          unquote)
+                          unquote, verify_of)
 from .configfile import config_path_for, read_config_file
 from .config import (find_rule_type, language, load_config,
                      load_layer, max_rule_chars,
@@ -141,6 +147,7 @@ from .state import (cleanup_stale_state, close_state,
                     save_state, state_dir, state_file_for)
 from .stats import (load_stats, matched_dir, record_injections, rule_key,
                     stats_path)
+from .written import coerce_written, record_written, take_written
 from .context import build_context, defang, neutralize
 from .main import (build_blocks, cli, config_for_scopes, blocking_rule, main,
                    messages_for_scopes, reset_session, session_notice)

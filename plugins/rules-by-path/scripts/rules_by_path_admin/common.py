@@ -20,14 +20,14 @@ HOOK_PATH = os.path.join(
     "hooks", "rules-by-path.py")
 
 # The frontmatter keys this tool owns. RENDERED_KEYS are the ones `render_rule`
-# writes from its own arguments, so a copy arriving in a submitted rule is
-# dropped rather than written a second time — `remember_after` is the name
-# `remember_again_after` carried until 0.4.0, and keeping both would leave the
-# setting alive under two names forever. `description`, `block` and the name
-# `block` carried until 0.7.0 are owned too (so `validate` does not report them
-# as unknown keys) but are carried through verbatim, like any key this tool
-# knows nothing about. The rest of the set is derived from the hook further
-# down, where HOOK exists.
+# writes from its own arguments — the globs, the filters and `verify` — so a
+# copy arriving in a submitted rule is dropped rather than written a second time
+# — `remember_after` is the name `remember_again_after` carried until 0.4.0, and
+# keeping both would leave the setting alive under two names forever.
+# `description`, `block` and the name `block` carried until 0.7.0 are owned too
+# (so `validate` does not report them as unknown keys) but are carried through
+# verbatim, like any key this tool knows nothing about. The rest of the set is
+# derived from the hook further down, where HOOK exists.
 INTERVAL_KEY = "remember_again_after"
 LEGACY_INTERVAL_KEY = "remember_after"
 DESCRIPTION_KEY = "description"
@@ -85,8 +85,10 @@ EXCLUDE_KEY = HOOK.EXCLUDE_KEYS[0]
 TOOL_KEY = HOOK.TOOL_KEYS[0]
 BLOCK_KEY = HOOK.BLOCK_KEY
 LEGACY_BLOCK_KEY = HOOK.LEGACY_BLOCK_KEY
-RENDERED_KEYS = ({INTERVAL_KEY, LEGACY_INTERVAL_KEY} | set(HOOK.GLOB_KEYS)
-                 | set(HOOK.EXCLUDE_KEYS) | set(HOOK.TOOL_KEYS))
+VERIFY_KEY = HOOK.VERIFY_KEY
+RENDERED_KEYS = ({INTERVAL_KEY, LEGACY_INTERVAL_KEY, VERIFY_KEY}
+                 | set(HOOK.GLOB_KEYS) | set(HOOK.EXCLUDE_KEYS)
+                 | set(HOOK.TOOL_KEYS))
 OWN_KEYS = RENDERED_KEYS | {DESCRIPTION_KEY, BLOCK_KEY, LEGACY_BLOCK_KEY}
 
 

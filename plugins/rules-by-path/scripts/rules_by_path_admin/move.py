@@ -160,7 +160,8 @@ def cmd_move(args):
     atomic_write(target, render_rule(
         [after for _before, after in globs], body, submitted_interval(fields),
         preserved_fields(fields, owned_last=True),
-        excludes=[after for _before, after in excludes], tool=HOOK.tools_of(fields)))
+        excludes=[after for _before, after in excludes],
+        tool=HOOK.tools_of(fields), verify=HOOK.verify_of(fields)))
     os.unlink(source_path)
 
     source_label = "global" if args.use_global else f"project {source_anchor}"

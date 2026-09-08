@@ -52,6 +52,10 @@ def main():
                              "(Write/Edit/MultiEdit/NotebookEdit) or to reads; "
                              f"'{HOOK.TOOL_KIND_ANY}' clears the restriction. "
                              "On `which`, asks what fires for that kind of call")
+    parser.add_argument("--verify", action="append", default=[],
+                        help="command to run at the end of a turn in which a "
+                             "file this rule covers was written; repeat for "
+                             f"several, '{HOOK.VERIFY_NONE}' clears them")
     parser.add_argument("--rule", help="rule file name")
     parser.add_argument("--type", dest="type",
                         help="rule type prefix (see `config` for the configured "
@@ -129,6 +133,11 @@ def main():
                  f"`add`, `update` and `which`")
     if args.command == "status" and args.exclude:
         fail("'status' takes no --exclude")
+    # `--verify` is narrower still: it does not describe a rule, it declares
+    # what one runs, so only the two commands that WRITE a rule accept it.
+    if args.verify and args.command not in ("add", "update"):
+        fail(f"'{args.command}' takes no --verify; it belongs to `add` and "
+             f"`update`")
     if args.json and args.command != "status":
         fail(f"'{args.command}' takes no --json; it belongs to `status`")
     if (args.fix or args.uninstall) and args.command != "doctor":

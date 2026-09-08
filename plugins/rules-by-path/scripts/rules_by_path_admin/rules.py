@@ -9,10 +9,11 @@ import sys
 
 from .common import (EXCLUDE_KEY, GLOB_KEY, HOOK, INTERVAL_KEY,
                      LEGACY_INTERVAL_KEY, MAX_ECHOED_NAME_CHARS, RENDERED_KEYS,
-                     TOOL_KEY, atomic_write, check_glob, check_line_value,
-                     existing_is_not_a_rule, existing_rule_path, fail,
-                     other_markdown_in, preserved_fields, rule_path, rules_in,
-                     scope_for, warn, warn_if_long)
+                     TOOL_KEY, VERIFY_KEY, atomic_write, check_glob,
+                     check_line_value, existing_is_not_a_rule,
+                     existing_rule_path, fail, other_markdown_in,
+                     preserved_fields, rule_path, rules_in, scope_for, warn,
+                     warn_if_long)
 from .config import (TYPE_SEPARATOR, check_remember_again_after, config_for,
                      resolve_type)
 from .validate import filter_problems, validate_scope
@@ -45,18 +46,31 @@ def list_lines(key, values, check):
 
 
 def render_rule(globs, body, remember_again_after=None, extra=None,
-                excludes=None, tool=None):
+                excludes=None, tool=None, verify=None):
     # The hook ignores globs past MAX_GLOBS_PER_RULE and reads only
     # MAX_FRONTMATTER_BYTES to find the closing `---`, so a rule this tool writes
     # beyond either limit would be one the hook silently never injects. Refuse to
     # write it here instead, so what `add`/`update` confirm is what actually runs.
     excludes = list(excludes or [])
     tool = list(tool or [])
+    verify = list(verify or [])
     for label, patterns in ((GLOB_KEY, globs), (EXCLUDE_KEY, excludes)):
         if len(patterns) > HOOK.MAX_GLOBS_PER_RULE:
             fail(f"a rule may declare at most {HOOK.MAX_GLOBS_PER_RULE} "
                  f"{label} patterns (got {len(patterns)}); split it into "
                  f"separate rules")
+    # Same reasoning, the other two bounds the hook applies to `verify`: a
+    # command past either of them is one it drops, so writing it would promise a
+    # verification that never runs.
+    if len(verify) > HOOK.MAX_VERIFY_COMMANDS:
+        fail(f"a rule may declare at most {HOOK.MAX_VERIFY_COMMANDS} "
+             f"{VERIFY_KEY} commands (got {len(verify)}); chain them in one "
+             f"command, or split the rule")
+    for command in verify:
+        if len(command) > HOOK.MAX_VERIFY_COMMAND_CHARS:
+            fail(f"a {VERIFY_KEY} command may be at most "
+                 f"{HOOK.MAX_VERIFY_COMMAND_CHARS} characters (got "
+                 f"{len(command)}); put it in a script and call that")
     # A rule whose filters cancel its own globs is refused rather than written
     # and then reported: `validate` runs after the write, so the user would be
     # left holding a rule that can never inject and a zero exit code.
@@ -72,6 +86,11 @@ def render_rule(globs, body, remember_again_after=None, extra=None,
     if tool:
         lines.extend(list_lines(
             TOOL_KEY, tool, lambda value: check_line_value(TOOL_KEY, value)))
+    # What the rule DOES comes after what it applies to and before how often it
+    # is repeated: the frontmatter reads in the order the rule is decided.
+    if verify:
+        lines.extend(list_lines(
+            VERIFY_KEY, verify, lambda value: check_line_value(VERIFY_KEY, value)))
     if remember_again_after:
         lines.append(f"{INTERVAL_KEY}: "
                      f"{check_line_value(INTERVAL_KEY, remember_again_after)}")
@@ -118,6 +137,40 @@ def filters_for(args, source):
     return excludes, tool
 
 
+def verify_for(args, source):
+    """The verification commands a rule being written should carry: what the
+    flags declare, else what `source` frontmatter does — the same precedence,
+    and for the same reason, as `filters_for`.
+
+    `--verify none` clears the key the way `--tool any` clears the tool filter:
+    removing a setting has to be sayable without the show -> edit -> update
+    round trip, and an empty string is not a word anyone can type. It is simply
+    not a command, so it drops out of a repeated flag too."""
+    if args.verify:
+        commands = [command.strip() for command in args.verify if command.strip()]
+        return [command for command in commands
+                if command.lower() != HOOK.VERIFY_NONE]
+    return HOOK.verify_of(source)
+
+
+def describe_verify(commands):
+    """The lines `add` and `update` print under a written rule for its
+    verification, one per command and in full: what will run at the end of a
+    turn is worth reading back verbatim, and it does not fit on a shared line."""
+    return [f"    {VERIFY_KEY}: {command}" for command in commands]
+
+
+def verify_label(commands):
+    """What a `list` line says about a rule's verification: how many commands
+    there are, not what they are. An inventory is one line per rule, and a
+    single command may run to MAX_VERIFY_COMMAND_CHARS — `show` is where the
+    text belongs."""
+    if not commands:
+        return []
+    plural = "" if len(commands) == 1 else "s"
+    return [f"{VERIFY_KEY}: {len(commands)} cmd{plural}"]
+
+
 def filter_parts(excludes, tool):
     """The filters a rule carries, one readable phrase each — assembled once so
     every command names them the same way."""
@@ -142,8 +195,11 @@ def filters_label(fields):
     An inventory that omits them hides the two reasons a rule someone is
     looking at will not fire where its glob says it should. The tool filter is
     reported as the hook READS it, so a value the hook ignores shows as no
-    filter — which is what it is; `validate` is where the typo is named."""
+    filter — which is what it is; `validate` is where the typo is named. A
+    verification is listed in the same slot: it is not a filter, but it is the
+    other thing a rule does that its glob alone does not say."""
     parts = filter_parts(HOOK.excludes_of(fields), HOOK.tools_of(fields))
+    parts.extend(verify_label(HOOK.verify_of(fields)))
     return f"  [{'; '.join(parts)}]" if parts else ""
 
 
@@ -224,13 +280,16 @@ def cmd_add(args):
     interval = args.remember_again_after or from_body or from_type
     check_remember_again_after(interval)
     excludes, tool = filters_for(args, submitted)
+    verify = verify_for(args, submitted)
     atomic_write(path, render_rule(globs, body, interval,
                                    preserved_fields(submitted),
-                                   excludes=excludes, tool=tool))
+                                   excludes=excludes, tool=tool, verify=verify))
     print(f"ok: {name}  <-  {', '.join(globs)}")
     filters = describe_filters(excludes, tool)
     if filters:
         print(filters)
+    for line in describe_verify(verify):
+        print(line)
     if interval:
         from_type_only = (interval == from_type and not args.remember_again_after
                           and not from_body)
@@ -266,14 +325,17 @@ def cmd_update(args):
                 or submitted_interval(fields) or None)
     check_remember_again_after(interval)
     excludes, tool = filters_for(args, submitted or fields)
+    verify = verify_for(args, submitted or fields)
     merged = {**fields, **submitted}
     atomic_write(path, render_rule(globs, body, interval,
                                    preserved_fields(merged, owned_last=True),
-                                   excludes=excludes, tool=tool))
+                                   excludes=excludes, tool=tool, verify=verify))
     print(f"ok: updated {args.rule}")
     filters = describe_filters(excludes, tool)
     if filters:
         print(filters)
+    for line in describe_verify(verify):
+        print(line)
     config = config_for(args)
     warn_if_long(args.rule, body, config)
     validate_scope(scope_dir, anchor, quiet=True, config=config,

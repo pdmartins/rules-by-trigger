@@ -4,8 +4,9 @@ Deliberately the only parser in the plugin — the admin CLI imports this one
 rather than carrying a second implementation."""
 
 from .constants import (MAX_GLOB_CHARS, MAX_GLOBS_PER_RULE,
+                        MAX_VERIFY_COMMAND_CHARS, MAX_VERIFY_COMMANDS,
                         MIN_REMEMBER_AGAIN_TOKENS, TOOL_ANY_VALUES,
-                        TOOL_KINDS, warn)
+                        TOOL_KINDS, VERIFY_KEY, VERIFY_NONE, warn)
 
 # The frontmatter keys that carry a rule's filters. Each is accepted in the
 # singular and the plural, because people write both.
@@ -166,6 +167,47 @@ def tools_of(fields):
     if any(value in TOOL_ANY_VALUES for value in values):
         return ()
     return tuple(kind for kind in TOOL_KINDS if kind in values)
+
+
+def verify_of(fields):
+    """The commands a rule asks to be run at the end of a turn in which a file
+    it covers was written, in the order it declares them.
+
+    Written like `glob` and `exclude` — one value on the key's own line, or a
+    list under it — because it is the same frontmatter and there is no reason
+    for a third dialect; `declared_values` is what makes the two shapes answer
+    the same. Blank items are dropped, `VERIFY_NONE` is honoured as "no
+    verification" (the word the CLI clears the key with, so a rule that carries
+    it means what it says), and both bounds drop rather than truncate: half a
+    command line is not a command.
+
+    An absent key answers `[]` with no warning at all. This runs on the hot
+    path — every write of a turn reaches it — and a rule declaring nothing is
+    the normal case, not a mistake to report. An absent key and a bare
+    `verify:` are indistinguishable here, which is exactly why `validate` reads
+    the raw field instead of calling this.
+
+    This says only what the frontmatter DECLARES; when and where the commands
+    run is the caller's decision, not this function's."""
+    commands = []
+    dropped = 0
+    for value in declared_values(fields, (VERIFY_KEY,)):
+        value = str(value).strip()
+        if not value or value.lower() == VERIFY_NONE:
+            continue
+        if len(value) > MAX_VERIFY_COMMAND_CHARS:
+            warn(f"{VERIFY_KEY} command longer than {MAX_VERIFY_COMMAND_CHARS} "
+                 f"chars ignored: {value[:64]!r}...")
+            continue
+        if len(commands) >= MAX_VERIFY_COMMANDS:
+            dropped += 1  # kept counting so the warning states how many were lost
+            continue
+        commands.append(value)
+    if dropped:
+        warn(f"more than {MAX_VERIFY_COMMANDS} {VERIFY_KEY} commands on one "
+             f"rule; {dropped} ignored (they never run — split the rule or "
+             f"chain them in one command)")
+    return commands
 
 
 def parse_size(text):

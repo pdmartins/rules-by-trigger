@@ -183,11 +183,12 @@ def migrate_renamed_keys(scope_dir):
         if not globs or not body:
             continue  # `validate` already reports these; rewriting would not help
         # Every setting `render_rule` writes from an argument has to be handed
-        # back to it: the filters are in RENDERED_KEYS, so `preserved_fields`
-        # drops them, and a rewrite that did not pass them would silently widen
-        # the rule it was only supposed to retitle a key on. `remember_after` is
-        # rendered from `submitted_interval`; the rest ride in `extra`, which is
-        # where the block key has to be swapped by hand.
+        # back to it: the filters and `verify` are in RENDERED_KEYS, so
+        # `preserved_fields` drops them, and a rewrite that did not pass them
+        # would silently widen the rule — or drop the verification — it was only
+        # supposed to retitle a key on. `remember_after` is rendered from
+        # `submitted_interval`; the rest ride in `extra`, which is where the
+        # block key has to be swapped by hand.
         extra = preserved_fields(fields, owned_last=True)
         if (LEGACY_BLOCK_KEY, BLOCK_KEY) in renames:
             extra.pop(LEGACY_BLOCK_KEY, None)
@@ -196,7 +197,8 @@ def migrate_renamed_keys(scope_dir):
             rendered = render_rule(globs, body, submitted_interval(fields),
                                    extra,
                                    excludes=HOOK.excludes_of(fields),
-                                   tool=HOOK.tool_values_of(fields))
+                                   tool=HOOK.tool_values_of(fields),
+                                   verify=HOOK.verify_of(fields))
         except AdminError as exc:
             # A rule this tool would refuse to write today (a filter that
             # cancels its own glob, say) is one `validate` reports. Renaming a

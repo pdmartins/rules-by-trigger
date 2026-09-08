@@ -36,6 +36,12 @@ repo, and the guidance still isn't tied to what the agent actually touches.
   Editing a rule re-injects it immediately.
 - Zero context cost for rules that never become relevant.
 
+Selection by path is the mechanism, and injecting text is only the first thing
+it can drive. One rule carries up to three verbs, all chosen by the same glob:
+**inject** its body, **block** a write to the paths it covers (*Blocking a
+write*), and **verify** — run the command it declares at the end of a turn in
+which one of those paths was written (*Verifying a write*).
+
 ## vs. native path rules
 
 Claude Code already ships path-scoped guidance of its own, and this plugin
@@ -67,6 +73,14 @@ Four gaps in that native behaviour are what this plugin is actually for:
    validate the rule, only the path; the added value is a pedagogical reason
    plus not having to hand-author a permission entry.
 
+The same argument extends past guidance to checks. Claude Code runs commands
+from hooks in `settings.json`, but a `Stop` or `PostToolUse` hook fires for
+every turn of the session whatever was touched, and there is no glob to say
+otherwise. `verify:` is that command selected by the same path mapping the
+plugin already has, working from either scope, with the rule text that explains
+*why* the check exists sitting next to it in the same file (see *Verifying a
+write*).
+
 On global scope specifically, the honest claim is narrower than "better":
 it is that this plugin's global rules are **consistently trusted** — every
 rule in `~/.claude/rules-by-path/` is treated as trusted input, uniformly.
@@ -81,7 +95,10 @@ nothing when it does not. It is explicitly **not** a claim about task
 correctness: two 2026 ablation studies found that injecting a rule into
 context, on its own, moves correctness on the underlying task by close to
 nothing. Use this to keep an agent inside a team's conventions cheaply, not to
-make it solve harder problems.
+make it solve harder problems. `verify:` does not change that claim either: it
+guarantees that the check *you* declared runs at the end of a turn that wrote a
+matching file, and that a failure comes back to Claude before the turn ends —
+nothing about whether your check is the right one.
 
 ## Install
 
@@ -253,10 +270,15 @@ remember_again_after: 50k
 Every injection is counted, per rule, in one small file beside the session
 state (`usage-stats.json`): injections, repeats, distinct sessions, first and
 last date, the directories the rule fired under and the glob that matched —
-every collection bounded, session ids never shown. `status` prints it next to
-each rule and derives two notes from it: a rule **never injected** since stats
+every collection bounded, session ids never shown. A rule that declares
+`verify:` carries a third number — how often its commands ran and how often
+they failed, printed as `verified N, failed M`, and counted for every rule that
+asked for a command when two share one. `status` prints all of it next to each
+rule and derives two notes from it: a rule **never injected** since stats
 began, and a rule that fires often but **always under one subfolder** of a
-wider glob, with the narrower glob to use.
+wider glob, with the narrower glob to use. A rule whose command ran but whose
+text has never been delivered still counts as never injected — a command
+running says nothing about the guidance beside it.
 
 The `rules-by-path:improve` skill turns that, plus the validator's notes, into
 proposals — prune, narrow, split, reword — and harvests path-bound
@@ -358,9 +380,11 @@ anywhere). To target a `docs/` folder wherever it appears, use `**/docs/**`.
   and the tool call proceeds untouched. The hook denies a tool call only
   through one deliberate, narrow path — a **global** rule with `block: true`
   matching a write (see *Enforcing a rule* below) — never as a side effect of a
-  failure. The recommended hardening's own `permissions.deny` entries (see
-  *Security model*) are a second, independent way to deny, which the hook has
-  no part in enforcing.
+  failure. A failing `verify:` is not that path either: it holds the *turn*
+  open at `Stop` and denies no tool call (see *Verifying a write*). The
+  recommended hardening's own `permissions.deny` entries (see *Security model*)
+  are a second, independent way to deny, which the hook has no part in
+  enforcing.
 - **Bounded**: a rule is truncated at 4k chars (the CLI warns above 2k), one
   injection is capped at 24k, a scope is capped at 256 rules and a glob at 256
   chars, and at most 8 scopes are consulted per tool call.
@@ -420,7 +444,14 @@ or hang your session.
 
 That boundary is enforced by the containment, provenance and matching
 guarantees listed above, each covered by a regression test in
-`tests/test_security.py`.
+`tests/test_security.py`. One asymmetry inside it is deliberate:
+
+- **A project rule's `verify:` command runs; a project rule's `block: true`
+  does not.** Running a command that arrived with a repository is what Claude
+  Code already does for hooks in that repository's `.claude/settings.json`;
+  letting the repository refuse the machine owner's own tool calls is not. The
+  reasoning, and the allowlist that was considered and rejected, are in
+  [ADR 1](docs/adr/0001-project-verify-runs-block-stays-inert.md).
 
 ### Recommended hardening
 
@@ -510,6 +541,114 @@ creates a minimal `settings.json` if the project has none yet. A global rule
 needs no such sync: the hook already blocks directly, so `--sync --global`
 is refused.
 
+## Verifying a write (`verify:`)
+
+Injection buys adherence to a convention; it cannot say whether what came out
+actually holds. A rule can declare the check that answers that, and a `Stop`
+hook runs it at the end of the turn:
+
+```markdown
+---
+glob: src/api/**
+verify: pytest -q tests/api
+---
+Every endpoint validates its input and returns ProblemDetails on error.
+```
+
+Several checks go in a list. Each item is one shell command line, so
+`pytest -q && ruff check .` is one verification, not two:
+
+```markdown
+---
+glob: src/api/**
+verify:
+  - pytest -q tests/api
+  - ruff check src/api
+---
+Every endpoint validates its input and returns ProblemDetails on error.
+```
+
+The CLI writes it: `--verify '<command>'` on `add` and `update`, repeated for
+several, and `--verify none` clears the key the way `--tool any` clears the
+tool filter.
+
+**When it runs.** At the end of a turn in which one of the four editing tools
+— `Write`, `Edit`, `MultiEdit`, `NotebookEdit` — wrote a file the rule's glob
+matches. A `Read` never triggers it. `exclude:` applies exactly as it does to
+injection: same matcher, same answer. `tool:` is deliberately *not* consulted,
+because a write is the trigger either way — so a rule narrowed to `tool: read`
+still verifies, and `validate` points that out, since the check then runs with
+the rule's own guidance never delivered for that write.
+
+**Where it runs.** A project rule's commands run at the root of the project
+that owns the rule — where its `pytest.ini`, its `Makefile` and its relative
+paths mean what they say. A global rule has no root of its own, so it borrows
+the project of the file that triggered it, falling back to the session's
+working directory when that file belongs to no project. The same global rule
+therefore runs once per repository it touched, which is the point: `pytest`
+names a different suite in each.
+
+**What comes back.** A failure holds the turn open (`decision: block`) and
+hands Claude, for each failed command, the name of the rule that asked for it,
+the command itself, one status line — `exit code N`, or `timed out after 120s
+and was killed`, or `not finished: this turn's verification time budget ran
+out`, or `could not be started` — and the last 60 lines it printed, stdout and
+stderr interleaved in the order a terminal would have shown them. The rule's
+body is not repeated: it was injected when the file was touched, and paying for
+it twice buys nothing. Every command runs even after one has failed, so a turn
+that wrote in three folders hears about all three at once, and the ones that
+passed are listed at the end, `passed: <command> (rule '<name>')`, one line
+each.
+
+The order is the global scope first, then project scopes from the outermost to
+the innermost, with each distinct command-and-directory pair run once. Two
+sibling projects written in the same turn therefore interleave rather than
+arriving grouped.
+
+When everything passes, Claude is told nothing at all. The **user** gets one
+line per command instead — `rules-by-path: verified — <command> (rule
+'<name>')` — because the check was theirs to ask for, and the model's context
+should not pay for good news.
+
+**It runs again only after a new write.** Each verification takes the turn's
+list of written paths and clears it, so a turn that is held open and then
+answers without writing has nothing left to check and ends. A `verify:` that
+can never pass therefore holds the turn for exactly as long as Claude keeps
+writing to the paths it covers, with Claude Code's own cap of eight
+consecutive `Stop` blocks as the outer backstop.
+
+**Timeouts.** 120 s per command: past that the command *and everything it
+started* are killed, and it is reported as a failure carrying whatever it had
+already printed. 540 s for all of a turn's verifications together: a command
+that starts near the end of that budget gets only what is left of it, and one
+that finds nothing left is not started at all — both are reported as the
+turn's budget running out, never as the command's own timeout, because that is
+not what they hit. The turn's budget sits well below the 600 s the `Stop` hook
+itself is given in `hooks.json`, so the hook always outlives its commands and
+gets to print its report. A hook the harness kills prints nothing, and a turn
+ending with a failing check unreported is the one outcome worse than a slow
+turn.
+
+**Both scopes execute.** Unlike `block: true`, a `verify:` in a project's own
+`.claude/rules-by-path/` runs, with no gate — see the bullet under *Security
+model* and [ADR 1](docs/adr/0001-project-verify-runs-block-stays-inert.md) for
+why the two verbs are treated differently.
+
+The honest limits:
+
+- **Edits made through the shell are invisible.** `sed -i`, or a script that
+  rewrites a file, is not a write the plugin can see — exactly as it is not a
+  touch it can inject for. Nothing is verified for it.
+- **The command is trusted the way a project hook is.** Trusting a directory
+  trusts its `verify:` commands in the same gesture. Review a clone's
+  `.claude/rules-by-path/` the way you review its `.claude/settings.json`.
+- **Still not a claim about correctness.** The plugin does not judge what your
+  command asserts, only that it ran and that its failure reached Claude before
+  the turn ended. A check that tests nothing passes.
+- **Bounded**: at most 8 commands per rule, 512 chars each, and at most 512
+  written paths remembered per turn. `add` and `update` refuse to write what
+  the hook would drop, and `validate` reports it in a rule written by hand.
+
 ## Uninstalling
 
 `/plugin uninstall rules-by-path@pdmartins` removes the hook and the
@@ -557,7 +696,7 @@ of which is installed on a user's machine.
 plugins/
 └── rules-by-path/                THE PLUGIN — this, and only this, is installed
     ├── .claude-plugin/plugin.json
-    ├── hooks/                    PreToolUse injection + SessionStart
+    ├── hooks/                    PreToolUse injection, Stop verification, SessionStart
     ├── bin/                      launchers (POSIX + .cmd), on PATH when installed
     ├── scripts/                  the management CLI the skills drive
     ├── skills/                   manage, doctor, improve

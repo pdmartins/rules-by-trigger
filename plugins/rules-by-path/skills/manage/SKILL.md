@@ -123,6 +123,37 @@ with the list.
 `--glob '...'`): a glob is unrestricted repository data, and `$(...)` expands
 inside double quotes.
 
+## When the user asks for a check (`verify:`)
+
+A rule can also declare a command that runs at the end of a turn in which a
+file it covers was written; a failure comes back to Claude before the turn
+ends. **Write the key only when the user asks for it.** Never propose one and
+never infer one from the repository's tooling: stating a constraint is what a
+rule is for, and running a command is a separate decision that is theirs.
+
+When they do ask, three things must hold of the command — check them before
+writing it, and say which one fails if one does:
+
+- it **exists in that repository**, run from its root — a project rule's
+  commands run at its own project root, a global rule's at the root of the
+  project of the file that triggered it;
+- it is **deterministic**: same files in, same verdict out. A flaky check holds
+  the turn open for a reason nobody can act on;
+- it is **fast enough for the budget**: 120 s per command, 540 s for everything
+  one turn owes.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/bin/rules-by-path" update --root "<root>" \
+  --rule 'CONV_api-validates.md' --verify 'pytest -q tests/api' <<'EOF'
+<the body, unchanged>
+EOF
+```
+
+Repeat `--verify` for several commands; `--verify none` removes them all. Read
+back what `add`/`update` echo, and the notes `validate` prints — a command the
+hook would drop is named there, not here. `references/mechanics.md` has the
+shape of the key and when it fires.
+
 ## Splitting, moving, removing
 
 - **Split** a rule that mixes types, path sets or has grown past the soft
@@ -162,5 +193,5 @@ skill's job, not this one's.
   user pastes a page of knowledge to be remembered (split it first).
 - `references/globs.md` — when the glob is not obvious (anti-duplication
   rules go on the WRONG area), the semantics table, `exclude` and `tool`.
-- `references/mechanics.md` — timing, repeats, scopes, `config.json` layers
-  and how to change them under hardening.
+- `references/mechanics.md` — timing, repeats, scopes, the `verify:` key,
+  `config.json` layers and how to change them under hardening.

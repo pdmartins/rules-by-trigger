@@ -1,6 +1,7 @@
-# How injection works, and the configuration behind it
+# How injection and verification work, and the configuration behind it
 
-Read this when a question is about timing, repeats, scopes or `config.json`.
+Read this when a question is about timing, repeats, scopes, the `verify:` key
+or `config.json`.
 
 ## How injection works
 
@@ -32,6 +33,47 @@ Read this when a question is about timing, repeats, scopes or `config.json`.
   the repository root (`git rev-parse --show-toplevel`), not whatever directory
   happens to be the cwd.
 - Changes take effect immediately. No restart.
+
+## How verification works
+
+- `verify:` takes one command on the key's own line, or a list under it — the
+  same two shapes `glob` and `exclude` accept:
+
+  ```markdown
+  ---
+  glob: src/api/**
+  verify:
+    - pytest -q tests/api
+    - ruff check src/api
+  ---
+  ```
+
+  Each item is one shell command line, so `pytest -q && ruff check .` is a
+  single verification. `verify: none` means the key is off, and is what
+  `--verify none` leaves behind.
+- The commands run at the end of a turn in which Write/Edit/MultiEdit/
+  NotebookEdit wrote a file the glob matches. Reads never trigger them, and a
+  Bash edit is invisible to them exactly as it is to injection. They run again
+  only after a new matching write, so a turn that is held open and then answers
+  without writing ends.
+- `exclude` applies. `tool` does NOT: a write is the trigger either way, so a
+  rule with `tool: read` still verifies while its body never reaches the model
+  for that write — `validate` says so.
+- Where: a project rule's commands run at the root of the project that owns the
+  rule, a global rule's at the root of the project of the file that triggered
+  it (the session's cwd when there is none). Each distinct command-and-directory
+  pair runs once, global scope first, then project scopes outermost first.
+- A failure holds the turn open and hands Claude the rule's name, the command,
+  its exit code or timeout, and the last 60 lines it printed; the rule's body
+  is not repeated. Commands that passed are one line to the USER and nothing to
+  the model.
+- Bounds: 8 commands per rule, 512 characters each, 120 s per command, 540 s
+  for everything one turn owes. A command past a bound is dropped by the hook,
+  so `add` and `update` refuse to write it and `validate` names it in a rule
+  that was written by hand.
+- Both scopes execute. A project `verify:` is not gated the way `block:` is,
+  because a repository's own `.claude/settings.json` hooks already run once its
+  directory is trusted.
 
 ## Changing the configuration
 

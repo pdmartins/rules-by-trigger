@@ -7,6 +7,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ### Added
 
+- **`verify:` — a rule can now declare a command, and the hook runs it at the
+  end of a turn in which a file that rule covers was written.** A rule's text
+  buys adherence to a convention and says nothing about whether what came out
+  holds; this adds the check that does, selected by the same glob. A failure
+  holds the turn open and gives Claude the rule's name, the command, its exit
+  code and the last 60 lines it printed; a pass is one line to the user and
+  nothing to the model. Native hooks already run commands, but for every turn
+  of the session, with no glob to narrow them and no place for the reason the
+  check exists. `add` and `update` take `--verify '<command>'`, repeatable,
+  with `--verify none` to clear it; `list` and `status` show `verify: N cmds`
+  beside the rule, and `status` counts `verified N, failed M`. A project
+  scope's `verify:` runs where its `block:` stays inert — why, in
+  `docs/adr/0001-project-verify-runs-block-stays-inert.md`.
 - `improve` now weighs each rule by what it actually carries: whether Claude
   would have known it from the files it was going to read anyway. A rule
   stating something the model already knows buys adherence to your spelling of

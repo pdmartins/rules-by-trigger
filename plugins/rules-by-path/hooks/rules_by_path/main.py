@@ -1,5 +1,6 @@
-"""The three entry points Claude Code calls: the PreToolUse injection
-(`main`), the SessionStart notice, and the state reset on compact/clear."""
+"""The four entry points Claude Code calls: the PreToolUse injection (`main`),
+the SessionStart notice, the state reset on compact/clear, and the Stop
+verification — which lives in `verify.py` and is only dispatched here."""
 
 import hashlib
 import json
@@ -22,6 +23,7 @@ from .state import (cleanup_stale_state, close_state, context_size,
                     detect_context_regression, is_due, open_state,
                     pop_superseded_entries, save_state, state_file_for)
 from .stats import record_injections
+from .verify import verify_turn
 from .written import record_written
 
 
@@ -359,6 +361,8 @@ def cli(argv=None):
             reset_session()
         elif "--session-notice" in argv:
             session_notice()
+        elif "--verify" in argv:
+            verify_turn()
         else:
             main()
     except Exception as exc:  # never break the tool call because of this hook

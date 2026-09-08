@@ -12,6 +12,17 @@
         ]
       }
     ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/rules-by-path-verify\"",
+            "timeout": 600
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "matcher": "compact|clear",

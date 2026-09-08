@@ -2,7 +2,10 @@
 
 Two deterministic signals a human needs before pruning or narrowing a rule:
 a rule that has never fired since stats began, and a rule that fires often
-but always under one subfolder of the glob it declares."""
+but always under one subfolder of the glob it declares. A rule that also
+declares `verify:` carries a third number — how often its command ran and how
+often it failed — which is evidence of a different kind: not whether the rule
+is read, but whether what it asks for holds."""
 
 import datetime
 
@@ -14,7 +17,9 @@ GLOB_METACHARS = "*?"
 
 # ---- user-visible text ------------------------------------------------------
 USAGE_LABEL = "injected {injections}x in {sessions} session(s), last {last}"
-USAGE_REPEATS = ", {reinjections} repeat(s)"
+USAGE_REPEATS = "{reinjections} repeat(s)"
+USAGE_VERIFICATIONS = "verified {verifications}, failed {failures}"
+USAGE_SEPARATOR = ", "
 NOTE_NEVER = ("never injected since usage stats began ({since}): {names} — a "
               "glob that matches nothing here, or a rule nobody needs")
 NOTE_NARROW = ("{name}: injected {injections}x, always under {common!r}, while "
@@ -41,17 +46,41 @@ def public_usage(entry):
     return {"injections": entry["injections"], "reinjections": entry["reinjections"],
             "sessions": entry["sessions"], "first": day_of(entry["first"]),
             "last": day_of(entry["last"]), "dirs": entry["dirs"],
-            "globs": entry["globs"]}
+            "globs": entry["globs"], "verifications": entry["verifications"],
+            "failures": entry["failures"]}
 
 
 def usage_label(entry):
+    """The one-line summary `status` prints after a rule, or None when there is
+    nothing recorded to print.
+
+    Each half is left out when its counter is zero, and for the same reason:
+    a rule that never repeats and never verifies would otherwise carry two
+    columns of zeroes on every line. A rule that only ever verified — its glob
+    covers writes, its text has never been injected — is not made to claim
+    "injected 0x, last ?" either; it reports the number it has."""
     if entry is None:
         return None
-    label = USAGE_LABEL.format(injections=entry["injections"],
-                               sessions=entry["sessions"], last=day_of(entry["last"]))
+    parts = []
+    if entry["injections"]:
+        parts.append(USAGE_LABEL.format(injections=entry["injections"],
+                                        sessions=entry["sessions"],
+                                        last=day_of(entry["last"])))
     if entry["reinjections"]:
-        label += USAGE_REPEATS.format(reinjections=entry["reinjections"])
-    return label
+        parts.append(USAGE_REPEATS.format(reinjections=entry["reinjections"]))
+    if entry["verifications"]:
+        parts.append(USAGE_VERIFICATIONS.format(
+            verifications=entry["verifications"], failures=entry["failures"]))
+    return USAGE_SEPARATOR.join(parts) or None
+
+
+def never_injected(entry):
+    """Whether a rule's text has never reached a model since stats began.
+
+    Not the same as "has no entry": a rule whose `verify:` ran has an entry
+    with zero injections, and it is exactly as unread as one with no entry at
+    all — a command running says nothing about the guidance beside it."""
+    return entry is None or not entry["injections"]
 
 
 def segments_of(path):
@@ -112,7 +141,8 @@ def usage_notes(stats, scope_dir, rules):
     if not stats["rules"]:
         return []  # nothing recorded anywhere yet: silence, not forty "never"s
     notes = []
-    never = [name for name, _globs in rules if usage_of(stats, scope_dir, name) is None]
+    never = [name for name, _globs in rules
+             if never_injected(usage_of(stats, scope_dir, name))]
     if never:
         notes.append(NOTE_NEVER.format(since=day_of(stats["since"]),
                                        names=", ".join(never)))

@@ -66,7 +66,9 @@ Layout — one concern per module, none over 400 lines:
     due.py          when a delivered rule is due again, and edit cleanup
     written.py      the paths written since the last verification
     context.py      assembling the injected text, defanging forged framing
-    main.py         the three entry points Claude Code calls
+    verify.py       the Stop hook: which `verify:` commands a turn owes
+    verifyrun.py    running one of them, and the tail of what it printed
+    main.py         the four entry points Claude Code calls
 
 This module re-exports the surface the admin CLI and the test suite import.
 `hooks/rules-by-path.py` is the executable facade that Claude Code runs; it
@@ -108,14 +110,22 @@ from .constants import (ADMIN_COMMAND, BRAZILIAN_PORTUGUESE,
                         TOOL_KIND_READ, TOOL_KIND_WRITE, TOOL_KINDS,
                         TRANSCRIPT_TAIL_BYTES,
                         TRUNCATION_NOTICE, TRUNCATION_NOTICES,
-                        VERIFY_COMMAND_TIMEOUT_SECONDS, VERIFY_KEY,
-                        VERIFY_NONE, VERIFY_OUTPUT_TAIL_LINES,
+                        VERIFY_COMMAND_TIMEOUT_SECONDS,
+                        VERIFY_HOOK_TIMEOUT_SECONDS, VERIFY_KEY,
+                        VERIFY_KILL_DRAIN_SECONDS, VERIFY_NONE,
+                        VERIFY_OUTPUT_TAIL_LINES,
+                        VERIFY_TOTAL_BUDGET_SECONDS,
                         WRITE_TOOL_NAMES, warn)
 from .messages import (ENFORCE_DENY_REASON_TEMPLATE_KEY,
                        LANGUAGE_NORMAL_FORM, LEGACY_NOTICE_KEY,
                        MESSAGE_KEYS, MESSAGES, SESSION_NOTICE_KEY,
                        SHIPPED_LANGUAGES, SUPERSEDE_NOTICE_KEY,
-                       TRUNCATION_NOTICE_KEY, canonical_language,
+                       TRUNCATION_NOTICE_KEY, VERIFY_ERROR_KEY,
+                       VERIFY_EXIT_CODE_KEY, VERIFY_FAILURE_KEY,
+                       VERIFY_NO_OUTPUT_KEY, VERIFY_OUT_OF_TIME_KEY,
+                       VERIFY_PASSED_KEY, VERIFY_REPORT_HEADER_KEY,
+                       VERIFY_SYSTEM_MESSAGE_KEY, VERIFY_TIMED_OUT_KEY,
+                       canonical_language,
                        has_translation, messages_for, normalize_language,
                        sanitize_language)
 from .frontmatter import (BLOCK_KEY, BLOCK_TRUE_VALUES, EXCLUDE_KEYS,
@@ -145,9 +155,15 @@ from .state import (cleanup_stale_state, close_state,
                     coerce_seen_entry, context_size, detect_context_regression,
                     is_due, lock_exclusive, open_state, pop_superseded_entries,
                     save_state, state_dir, state_file_for)
-from .stats import (load_stats, matched_dir, record_injections, rule_key,
-                    stats_path)
+from .stats import (load_stats, matched_dir, record_injections,
+                    record_verifications, rule_key, stats_path, update_stats)
 from .written import coerce_written, record_written, take_written
 from .context import build_context, defang, neutralize
+from .verifyrun import (CommandResult, STATUS_ERROR, STATUS_FAILED,
+                        STATUS_OUT_OF_TIME, STATUS_PASSED, STATUS_TIMED_OUT,
+                        out_of_time, run_command, tail)
+from .verify import (VerifyJob, build_report, build_system_message,
+                     collect_jobs, job_cwd, run_jobs, scope_order, status_line,
+                     take_turn_writes, verify_turn)
 from .main import (build_blocks, cli, config_for_scopes, blocking_rule, main,
                    messages_for_scopes, reset_session, session_notice)

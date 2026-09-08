@@ -58,6 +58,22 @@ VERIFY_OUTPUT_TAIL_LINES = 60
 # is session state on disk like everything else here, so it is bounded: without
 # a cap a long session writing thousands of files would grow it without end.
 MAX_WRITTEN_PATHS = 512
+# What the `Stop` hook gets from Claude Code before it is killed and its output
+# discarded. `hooks/hooks.json` mirrors this number by hand, because JSON cannot
+# import a constant — the test suite asserts the two still agree.
+VERIFY_HOOK_TIMEOUT_SECONDS = 600
+# Wall clock ALL of a turn's verifications share. Below the hook's own timeout
+# on purpose and by a wide margin: past it the remaining commands are reported
+# as unrun instead of started, so the hook always has time left to print its
+# report. A hook killed by the harness prints nothing at all, and a turn would
+# then end with its failing verification unreported — the one outcome worse
+# than a slow turn.
+VERIFY_TOTAL_BUDGET_SECONDS = 540
+# How long a killed command is given to hand over what it had already printed.
+# The kill goes to the whole process group, so this normally returns at once;
+# the ceiling is there for the platform where the group could not be signalled
+# and a surviving grandchild still holds the pipe.
+VERIFY_KILL_DRAIN_SECONDS = 5
 
 # How long a rule may be. Both are defaults: `config.json` may set `rule_size`
 # per user and per project (see config.py). A rule is resent WHOLE every time it

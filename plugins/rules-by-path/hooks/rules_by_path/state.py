@@ -62,12 +62,20 @@ def state_dir_candidates():
     yield os.path.join(tempfile.gettempdir(), f"rules-by-path-state{suffix}")
 
 
-def state_dir():
+def state_dir(create=True):
     """Where per-session state lives — the first candidate that exists, is
-    ours, and is writable."""
+    ours, and is writable.
+
+    `create=False` asks only where the state ALREADY is, and says nothing when
+    there is none. The `Stop` hook runs at the end of every turn of every
+    session, including the sessions of users who have no rules anywhere: for
+    them the answer is "no state, nothing to verify", and it must cost neither
+    a directory left behind nor a warning about a directory nobody asked for.
+    """
     for candidate in state_dir_candidates():
         try:
-            os.makedirs(candidate, mode=0o700, exist_ok=True)
+            if create:
+                os.makedirs(candidate, mode=0o700, exist_ok=True)
             if os.path.islink(candidate) or not os.path.isdir(candidate):
                 continue
             if not is_safely_owned(candidate):
@@ -77,13 +85,17 @@ def state_dir():
                 return candidate
         except Exception:
             continue
-    warn("no writable state directory; rules will re-inject on every tool call")
+    if create:
+        warn("no writable state directory; rules will re-inject on every tool call")
     return None
 
 
-def state_file_for(session_id):
+def state_file_for(session_id, create=True):
     """The state file for a session id, which arrives as JSON from another
     process and is therefore not to be trusted as a string.
+
+    `create` is passed straight to `state_dir`: a caller that only wants to
+    READ an existing state (the Stop hook) asks for no directory to be made.
 
     Everything else in this area degrades to "stateless but still injecting";
     this used to be the one line that could do worse. `re.sub` raises TypeError
@@ -92,7 +104,7 @@ def state_file_for(session_id):
     included — instead of costing only the dedup. An over-long id had the
     mirror-image effect: ENAMETOOLONG on every save, so every rule re-injected
     in full on every single tool call."""
-    directory = state_dir()
+    directory = state_dir(create)
     if directory is None:
         return None
     raw = session_id if isinstance(session_id, str) and session_id.strip() else "default"

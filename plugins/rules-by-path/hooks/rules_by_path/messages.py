@@ -42,8 +42,26 @@ SESSION_NOTICE_KEY = "SESSION_NOTICE"
 TRUNCATION_NOTICE_KEY = "TRUNCATION_NOTICE"
 SUPERSEDE_NOTICE_KEY = "SUPERSEDE_NOTICE"
 ENFORCE_DENY_REASON_TEMPLATE_KEY = "BLOCK_REASON_TEMPLATE"
+# The verification report (`verify:`, run by the Stop hook). Its English text is
+# written in the table below rather than in constants.py: the five keys above
+# are constants only because they predate this table, and constants.py is where
+# TUNABLES live — a sentence is not one.
+VERIFY_REPORT_HEADER_KEY = "VERIFY_REPORT_HEADER"
+VERIFY_FAILURE_KEY = "VERIFY_FAILURE"
+VERIFY_EXIT_CODE_KEY = "VERIFY_EXIT_CODE"
+VERIFY_TIMED_OUT_KEY = "VERIFY_TIMED_OUT"
+VERIFY_OUT_OF_TIME_KEY = "VERIFY_OUT_OF_TIME"
+VERIFY_ERROR_KEY = "VERIFY_ERROR"
+VERIFY_NO_OUTPUT_KEY = "VERIFY_NO_OUTPUT"
+VERIFY_PASSED_KEY = "VERIFY_PASSED"
+VERIFY_SYSTEM_MESSAGE_KEY = "VERIFY_SYSTEM_MESSAGE"
 MESSAGE_KEYS = (LEGACY_NOTICE_KEY, SESSION_NOTICE_KEY, TRUNCATION_NOTICE_KEY,
-                SUPERSEDE_NOTICE_KEY, ENFORCE_DENY_REASON_TEMPLATE_KEY)
+                SUPERSEDE_NOTICE_KEY, ENFORCE_DENY_REASON_TEMPLATE_KEY,
+                VERIFY_REPORT_HEADER_KEY, VERIFY_FAILURE_KEY,
+                VERIFY_EXIT_CODE_KEY, VERIFY_TIMED_OUT_KEY,
+                VERIFY_OUT_OF_TIME_KEY, VERIFY_ERROR_KEY,
+                VERIFY_NO_OUTPUT_KEY, VERIFY_PASSED_KEY,
+                VERIFY_SYSTEM_MESSAGE_KEY)
 
 # Two spellings of the same separator, because a language code is written both
 # ways in the wild and nobody should have to guess which one this file wants.
@@ -64,6 +82,23 @@ MESSAGES = {
         TRUNCATION_NOTICE_KEY: TRUNCATION_NOTICES[DEFAULT_LANGUAGE],
         SUPERSEDE_NOTICE_KEY: SUPERSEDE_NOTICE,
         ENFORCE_DENY_REASON_TEMPLATE_KEY: BLOCK_REASON_TEMPLATE,
+        VERIFY_REPORT_HEADER_KEY: (
+            "rules-by-path: {failed} of {total} verification(s) declared by "
+            "the rules covering what this turn wrote did not pass. Each block "
+            "below names the rule that asked for the command, the command "
+            "itself, and the last lines it printed. Address what they report "
+            "before ending the turn."
+        ),
+        VERIFY_FAILURE_KEY: "rule {name!r} — {command}\n{status}\n{output}",
+        VERIFY_EXIT_CODE_KEY: "exit code {code}",
+        VERIFY_TIMED_OUT_KEY: "timed out after {seconds}s and was killed",
+        VERIFY_OUT_OF_TIME_KEY: ("not finished: this turn's verification time "
+                                 "budget ran out"),
+        VERIFY_ERROR_KEY: "could not be started",
+        VERIFY_NO_OUTPUT_KEY: "(no output)",
+        VERIFY_PASSED_KEY: "passed: {command} (rule {name!r})",
+        VERIFY_SYSTEM_MESSAGE_KEY: ("rules-by-path: verified — {command} "
+                                    "(rule {name!r})"),
     },
     BRAZILIAN_PORTUGUESE: {
         LEGACY_NOTICE_KEY: (
@@ -97,6 +132,23 @@ MESSAGES = {
             "regra {name!r} (escopo global). O texto da própria regra é "
             "o motivo:\n\n{body}"
         ),
+        VERIFY_REPORT_HEADER_KEY: (
+            "rules-by-path: {failed} de {total} verificação(ões) "
+            "declaradas pelas regras que cobrem o que este turno escreveu não "
+            "passaram. Cada bloco abaixo nomeia a regra que pediu o comando, o "
+            "próprio comando e as últimas linhas que ele imprimiu. "
+            "Resolva o que elas apontam antes de encerrar o turno."
+        ),
+        VERIFY_FAILURE_KEY: "regra {name!r} — {command}\n{status}\n{output}",
+        VERIFY_EXIT_CODE_KEY: "código de saída {code}",
+        VERIFY_TIMED_OUT_KEY: "excedeu {seconds}s e foi encerrado",
+        VERIFY_OUT_OF_TIME_KEY: ("não terminou: o orçamento de tempo de "
+                                 "verificação deste turno acabou"),
+        VERIFY_ERROR_KEY: "não pôde ser executado",
+        VERIFY_NO_OUTPUT_KEY: "(sem saída)",
+        VERIFY_PASSED_KEY: "passou: {command} (regra {name!r})",
+        VERIFY_SYSTEM_MESSAGE_KEY: ("rules-by-path: verificado — {command} "
+                                    "(regra {name!r})"),
     },
 }
 SHIPPED_LANGUAGES = tuple(MESSAGES)

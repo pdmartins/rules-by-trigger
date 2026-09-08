@@ -38,9 +38,12 @@ def empty_stats():
 
 
 def empty_entry():
+    """A rule with nothing recorded yet. `verifications`/`failures` are part of
+    the shape rather than added on first use, so a stats file written before
+    `verify:` existed loads with them at zero instead of raising here."""
     return {"injections": 0, "reinjections": 0, "sessions": 0,
             "recent_sessions": [], "first": None, "last": None,
-            "dirs": {}, "globs": {}}
+            "dirs": {}, "globs": {}, "verifications": 0, "failures": 0}
 
 
 def matched_dir(abs_path, base_dir):
@@ -89,7 +92,8 @@ def coerce_entry(value):
     entry = empty_entry()
     if not isinstance(value, dict):
         return entry
-    for key in ("injections", "reinjections", "sessions"):
+    for key in ("injections", "reinjections", "sessions",
+                "verifications", "failures"):
         if isinstance(value.get(key), int) and not isinstance(value.get(key), bool):
             entry[key] = value[key]
     for key in ("first", "last"):
@@ -127,11 +131,14 @@ def evict_oldest(rules):
         del rules[oldest]
 
 
-def record_injections(session_id, deliveries, abs_path):
-    """Count one injection per delivered rule. `deliveries` is
-    [(scope_dir, base_dir, name, glob, repeat)], in the order they were sent."""
-    if not deliveries:
-        return
+def update_stats(apply):
+    """Read the usage file under an exclusive lock, hand the parsed stats to
+    `apply`, and write back what it left behind.
+
+    The file handling is the delicate part — a lock, a symlink refusal, a
+    bounded read, a truncating rewrite — and both recorders below need exactly
+    it. Moved here verbatim from `record_injections`, whose body it was, so
+    there is one copy to keep right instead of two to keep in step."""
     path = stats_path()
     if path is None:
         return
@@ -146,11 +153,7 @@ def record_injections(session_id, deliveries, abs_path):
         os.lseek(fd, 0, os.SEEK_SET)
         raw = os.read(fd, STATS_READ_LIMIT_BYTES)
         stats = read_stats(raw)
-        now = int(time.time())
-        for scope_dir, base_dir, name, glob, repeat in deliveries:
-            entry = stats["rules"].setdefault(rule_key(scope_dir, name), empty_entry())
-            record_entry(entry, session_id, now, matched_dir(abs_path, base_dir),
-                         glob, repeat)
+        apply(stats)
         evict_oldest(stats["rules"])
         payload = json.dumps(stats).encode("utf-8")
         os.lseek(fd, 0, os.SEEK_SET)
@@ -164,6 +167,46 @@ def record_injections(session_id, deliveries, abs_path):
                 os.close(fd)
             except OSError:
                 pass
+
+
+def record_injections(session_id, deliveries, abs_path):
+    """Count one injection per delivered rule. `deliveries` is
+    [(scope_dir, base_dir, name, glob, repeat)], in the order they were sent."""
+    if not deliveries:
+        return
+
+    def apply(stats):
+        now = int(time.time())
+        for scope_dir, base_dir, name, glob, repeat in deliveries:
+            entry = stats["rules"].setdefault(rule_key(scope_dir, name), empty_entry())
+            record_entry(entry, session_id, now, matched_dir(abs_path, base_dir),
+                         glob, repeat)
+
+    update_stats(apply)
+
+
+def record_verifications(session_id, outcomes):
+    """Count one verification per rule that asked for a command that ran.
+    `outcomes` is [(scope_dir, name, passed)], in the order the commands ran.
+
+    A command two rules share is counted for both: it ran once, and it answered
+    for each of them. What this does NOT touch is any of the injection fields —
+    `sessions`, `recent_sessions` and `last` say how often a rule's TEXT
+    reached a model, and a verification puts no text in front of anyone. That
+    is also why `session_id` is taken and not stored: the parameter keeps the
+    two recorders one shape, and counting a verification as a session would
+    make `status` claim an injection that never happened."""
+    if not outcomes:
+        return
+
+    def apply(stats):
+        for scope_dir, name, passed in outcomes:
+            entry = stats["rules"].setdefault(rule_key(scope_dir, name), empty_entry())
+            entry["verifications"] += 1
+            if not passed:
+                entry["failures"] += 1
+
+    update_stats(apply)
 
 
 def load_stats():

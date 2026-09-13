@@ -20,11 +20,12 @@ from .matching import (collect_candidates, extract_file_path,
 from .reinject import reinject_budget
 from .rules import read_rule_file
 from .state import (cleanup_stale_state, close_state, context_size,
-                    detect_context_regression, is_due, open_state,
-                    pop_superseded_entries, save_state, state_file_for)
+                    detect_context_regression, empty_state, is_due,
+                    open_state, pop_superseded_entries, save_state,
+                    state_file_for)
 from .stats import record_injections
 from .verify import verify_turn
-from .written import record_written
+from .written import record_rules_written, record_written
 
 
 def config_for_scopes(scopes):
@@ -173,13 +174,25 @@ def main():
     # Resolved once for the whole call: resolving a path walks every component
     # of it, and both checks below need the same answer.
     real_abs = os.path.realpath(abs_path).replace(os.sep, "/")
+    tool_name = payload.get("tool_name")
     if is_inside_rules_dir(abs_path, real_abs):
+        # A rule file never injects — and, when the model is the one WRITING it,
+        # the `verify:` it may now carry must not run before the next session
+        # (see `record_rules_written`). Only a write pays for this: a read of a
+        # rule file, and every path outside the rules directory, return exactly
+        # as they did.
+        if tool_name in WRITE_TOOL_NAMES:
+            state_fd, state = open_state(state_file_for(payload.get("session_id")))
+            try:
+                record_rules_written(state, abs_path, real_abs)
+                save_state(state_fd, state)
+            finally:
+                close_state(state_fd)
         return
 
     scopes = find_scopes(os.path.dirname(abs_path))
     if not scopes:
         return
-    tool_name = payload.get("tool_name")
     candidates, legacy_scopes = collect_candidates(abs_path, real_abs, scopes,
                                                    tool_name)
 
@@ -344,8 +357,22 @@ def reset_session():
     except Exception:
         payload = {}
     state_path = state_file_for(payload.get("session_id"))
-    if state_path is None:
+    if state_path is None or not os.path.isfile(state_path):
         return
+    # One key survives: the rule files this session wrote itself. The rest of
+    # the state is about a context that no longer holds what was injected into
+    # it; `rules_written` is about the SESSION, and a /clear must not be the way
+    # to make a `verify:` the model authored here run now. A session that wrote
+    # no rule file keeps nothing, so it still costs an unlinked file rather than
+    # an empty one left behind.
+    state_fd, state = open_state(state_path)
+    try:
+        rules_written = state.get("rules_written") or []
+        if rules_written:
+            save_state(state_fd, empty_state(rules_written))
+            return
+    finally:
+        close_state(state_fd)
     try:
         os.unlink(state_path)
     except FileNotFoundError:

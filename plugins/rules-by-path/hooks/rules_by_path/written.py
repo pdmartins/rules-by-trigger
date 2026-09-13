@@ -11,7 +11,7 @@ Session state is where the note lives (see `open_state`); this module is only
 the three operations on that one key, kept apart so the file on disk and the
 list inside it are not the same module's business."""
 
-from .constants import MAX_WRITTEN_PATHS, warn
+from .constants import MAX_RULES_WRITTEN, MAX_WRITTEN_PATHS, warn
 
 # Once per process, and the hook is one process per tool call — so past the cap
 # every further write warns. That is the honest reading of "warn once": there is
@@ -32,7 +32,7 @@ def _warn_cap():
          f"covers only those is not verified this turn")
 
 
-def coerce_written(value):
+def coerce_written(value, cap=MAX_WRITTEN_PATHS):
     """The list of written paths from whatever is on disk, or [] when it is
     unusable.
 
@@ -41,15 +41,19 @@ def coerce_written(value):
     path belongs would crash the glob matching at the end of the turn — after
     the writes have happened, with nothing left to fail open into. What
     survives is the non-empty strings, in the order the file had them, deduped
-    and capped."""
+    and capped.
+
+    `cap` is a parameter because the state holds two lists of paths with the
+    same shape and different lifetimes — the turn's writes and the session's
+    rule-file writes — and they answer to caps of their own."""
     if not isinstance(value, list):
         return []
     written = []
     for entry in value:
         if isinstance(entry, str) and entry.strip() and entry not in written:
             written.append(entry)
-    if len(written) > MAX_WRITTEN_PATHS:
-        del written[:len(written) - MAX_WRITTEN_PATHS]
+    if len(written) > cap:
+        del written[:len(written) - cap]
     return written
 
 
@@ -82,6 +86,44 @@ def record_written(state, abs_path):
     if len(written) > MAX_WRITTEN_PATHS:
         del written[:len(written) - MAX_WRITTEN_PATHS]
         _warn_cap()
+
+
+def record_rules_written(state, abs_path, real_abs):
+    """Note that this SESSION wrote a rule file, so a `verify:` that file
+    carries does not run before the next session.
+
+    The gate this feeds is the one Claude Code already has for its own hooks: a
+    hook added to `settings.json` mid-session takes effect at the next startup,
+    because the harness snapshots them. Without the mirror image here, a model
+    that writes `verify: <anything>` into a rule file hands itself a shell for
+    the rest of the turn — the Stop hook re-reads every frontmatter fresh, and
+    the write path returns before recording anything, so nothing would notice.
+
+    Both spellings are kept, the literal path the tool named and its resolved
+    form, because the end of the turn compares a rule file it found by walking
+    the scope, which may be reached through either. Deduped, insertion-ordered
+    and capped like `written`; unlike `written` it is not taken by a
+    verification and survives a state reset (see `reset_session`), because what
+    it answers is about the session and not about the turn."""
+    recorded = state.get("rules_written")
+    if not isinstance(recorded, list):
+        recorded = []
+        state["rules_written"] = recorded
+    added = False
+    for path in (abs_path, real_abs):
+        if not isinstance(path, str) or not path or path in recorded:
+            continue
+        recorded.append(path)
+        added = True
+    # Only a write that actually appended something can have pushed the list
+    # past the cap. Without the flag, every re-write of an already-recorded rule
+    # file in a session sitting at the cap would re-trim a list already at it
+    # and warn again about a path nothing just dropped.
+    if added and len(recorded) > MAX_RULES_WRITTEN:
+        del recorded[:len(recorded) - MAX_RULES_WRITTEN]
+        warn(f"more than {MAX_RULES_WRITTEN} rule files written in this "
+             f"session; the oldest are forgotten, so a `verify:` this session "
+             f"wrote into one of them may run before the next session")
 
 
 def take_written(state):

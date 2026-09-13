@@ -149,10 +149,11 @@ writing it, and say which one fails if one does:
 EOF
 ```
 
-Repeat `--verify` for several commands; `--verify none` removes them all. Read
-back what `add`/`update` echo, and the notes `validate` prints — a command the
-hook would drop is named there, not here. `references/mechanics.md` has the
-shape of the key and when it fires.
+`add` takes the same flag, for a rule that is born with a check. Repeat
+`--verify` for several commands; `--verify none` removes them all. Read back
+what `add`/`update` echo, and the notes `validate` prints — a command the hook
+would drop is named there, not here. `references/mechanics.md` has the shape of
+the key and when it fires.
 
 ## Splitting, moving, removing
 

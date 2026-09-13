@@ -268,10 +268,14 @@ class RunCommandTest(unittest.TestCase):
         self.assertIn("timed out after 1s", report)
 
     def test_a_command_that_cannot_be_started_fails_without_raising(self):
+        """An environment that refused the command is not a failing check: it
+        never ran, so it holds no turn open and is told to the user instead."""
         result = HOOK.run_command(PASSING, os.path.join(self.tmp.name, "gone"))
+        results = [(self.job(), result)]
         self.assertEqual(result.status, HOOK.STATUS_ERROR)
+        self.assertIsNone(HOOK.build_report(results, MESSAGES))
         self.assertIn("could not be started",
-                      HOOK.build_report([(self.job(), result)], MESSAGES))
+                      HOOK.build_system_message(results, MESSAGES))
 
     def test_a_command_that_reads_stdin_does_not_wait_for_the_turn(self):
         result = HOOK.run_command(python_command("import sys; sys.stdin.read()"),
@@ -282,10 +286,13 @@ class RunCommandTest(unittest.TestCase):
     def test_the_turns_budget_stops_the_commands_that_are_left(self):
         job = self.job(marker_command())
         results = HOOK.run_jobs([job], budget=0)
-        self.assertEqual(results[0][1].status, HOOK.STATUS_OUT_OF_TIME)
+        self.assertEqual(results[0][1].status, HOOK.STATUS_NOT_STARTED)
         self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "marker.txt")),
                          "not started at all")
-        self.assertIn("time budget ran out", HOOK.build_report(results, MESSAGES))
+        self.assertIsNone(HOOK.build_report(results, MESSAGES),
+                          "a command nobody started blocks nothing")
+        self.assertIn("budget was already spent",
+                      HOOK.build_system_message(results, MESSAGES))
 
     def test_a_command_killed_by_the_budget_is_not_blamed_for_its_own_clock(self):
         job = self.job(python_command("import time; time.sleep(30)"))
@@ -299,7 +306,7 @@ class RunCommandTest(unittest.TestCase):
         self.assertEqual(
             HOOK.collect_jobs(["/nowhere/a.py"], self.tmp.name,
                               deadline=time.monotonic() - 1),
-            [])
+            ([], []))
 
     def test_the_budget_leaves_the_hook_room_to_report(self):
         self.assertLess(HOOK.VERIFY_TOTAL_BUDGET_SECONDS,
@@ -347,7 +354,7 @@ class ReportTemplatesTest(unittest.TestCase):
                 timed_out = HOOK.CommandResult(HOOK.STATUS_TIMED_OUT, None, 120, "")
                 self.assertIn("120", HOOK.status_line(timed_out, messages))
                 self.assertNotEqual(
-                    HOOK.status_line(HOOK.out_of_time(), messages),
+                    HOOK.status_line(HOOK.not_started(), messages),
                     HOOK.status_line(timed_out, messages),
                     "the turn's budget and the command's own allowance are "
                     "different sentences")

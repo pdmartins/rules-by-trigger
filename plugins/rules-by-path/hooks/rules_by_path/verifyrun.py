@@ -17,7 +17,8 @@ import signal
 import subprocess
 
 from .constants import (VERIFY_COMMAND_TIMEOUT_SECONDS,
-                        VERIFY_KILL_DRAIN_SECONDS, VERIFY_OUTPUT_TAIL_LINES,
+                        VERIFY_KILL_DRAIN_SECONDS, VERIFY_OUTPUT_CUT_MARKER,
+                        VERIFY_OUTPUT_TAIL_LINES, VERIFY_OUTPUT_TAIL_MAX_CHARS,
                         warn)
 
 # What became of one command. Named rather than spelled out at each site: the
@@ -26,8 +27,17 @@ from .constants import (VERIFY_COMMAND_TIMEOUT_SECONDS,
 STATUS_PASSED = "passed"
 STATUS_FAILED = "failed"          # ran to the end, exit code not zero
 STATUS_TIMED_OUT = "timed out"    # killed by its own per-command allowance
-STATUS_OUT_OF_TIME = "out of time"  # the TURN's budget ran out; set by verify.py
+STATUS_OUT_OF_TIME = "out of time"  # started, killed by the TURN's budget
+STATUS_NOT_STARTED = "not started"  # the TURN's budget was already spent
 STATUS_ERROR = "error"            # never started: no such directory, no shell
+
+# The two statuses that mean the command NEVER RAN, as opposed to ran and did
+# not pass. The distinction decides three things at once (see `verify.py`): a
+# command nobody let start cannot be evidence that anything is wrong, so it
+# never blocks the turn on its own, it is not counted as a verification of the
+# rule that asked for it, and it is reported as incomplete rather than as a
+# failure. A command killed MID-RUN by the turn's budget is not here: it ran.
+DID_NOT_RUN_STATUSES = (STATUS_NOT_STARTED, STATUS_ERROR)
 
 # The outcome of a command, whatever became of it:
 #   status     one of the constants above
@@ -43,19 +53,34 @@ CommandResult = collections.namedtuple("CommandResult",
 NEW_SESSION_KWARGS = {"start_new_session": True} if os.name != "nt" else {}
 
 
-def out_of_time():
-    """The result of a command the turn's budget never let start."""
-    return CommandResult(STATUS_OUT_OF_TIME, None, 0, "")
+def not_started():
+    """The result of a command the turn's budget never let start.
+
+    Named for what happened rather than for the clock that caused it: this is
+    the only outcome in which no process ever existed, and the whole of
+    `DID_NOT_RUN_STATUSES` hangs on that difference."""
+    return CommandResult(STATUS_NOT_STARTED, None, 0, "")
 
 
-def tail(output, lines=VERIFY_OUTPUT_TAIL_LINES):
-    """The last `lines` lines of what a command printed.
+def tail(output, lines=VERIFY_OUTPUT_TAIL_LINES,
+         max_chars=VERIFY_OUTPUT_TAIL_MAX_CHARS):
+    """The last `lines` lines of what a command printed, and at most
+    `max_chars` of them.
 
     The END of the output, not the beginning: a test runner puts its summary
     and the failing assertion last, and a build log's first lines are the same
     banner every time. Trailing blank lines go, because they would be spent as
-    context for nothing."""
-    return "\n".join(output.splitlines()[-lines:]).strip()
+    context for nothing.
+
+    Lines alone are not a bound on size. A minified bundle, a base64 payload or
+    a progress bar that rewrites itself with `\r` is ONE line of any length, so
+    the line tail would hand the model the entire thing — which is why the byte
+    ceiling is applied after it, keeping the end for the same reason, with a
+    marker saying the beginning is gone."""
+    text = "\n".join(output.splitlines()[-lines:]).strip()
+    if len(text) <= max_chars:
+        return text
+    return VERIFY_OUTPUT_CUT_MARKER + text[len(text) - max_chars:]
 
 
 def stop_process_tree(process):
@@ -98,6 +123,10 @@ def run_command(command, cwd, timeout=VERIFY_COMMAND_TIMEOUT_SECONDS):
     nobody is there to type. Without it the child would inherit this hook's own
     stdin — the pipe the Stop payload arrived through.
 
+    An exception's own text goes through `tail` like a command's output does:
+    it is a string this process did not write either, and a `PermissionError`
+    naming a path of any length must not become the whole report.
+
     The one bound not enforced here is on how MUCH a command may print: the
     output is read into memory whole and only then tailed. The per-command
     timeout is what bounds it in practice, and the command is one the user's
@@ -111,7 +140,7 @@ def run_command(command, cwd, timeout=VERIFY_COMMAND_TIMEOUT_SECONDS):
         # A scope whose directory has been deleted since the write, a shell
         # that is not there: the verification fails, the hook does not.
         warn(f"verification command could not be started ({command[:64]!r}): {exc}")
-        return CommandResult(STATUS_ERROR, None, timeout, str(exc))
+        return CommandResult(STATUS_ERROR, None, timeout, tail(str(exc)))
     try:
         raw, _ = process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -121,7 +150,7 @@ def run_command(command, cwd, timeout=VERIFY_COMMAND_TIMEOUT_SECONDS):
     except Exception as exc:
         stop_process_tree(process)
         warn(f"verification command failed to run ({command[:64]!r}): {exc}")
-        return CommandResult(STATUS_ERROR, None, timeout, str(exc))
+        return CommandResult(STATUS_ERROR, None, timeout, tail(str(exc)))
     status = STATUS_PASSED if process.returncode == 0 else STATUS_FAILED
     return CommandResult(status, process.returncode, timeout, decode(raw))
 

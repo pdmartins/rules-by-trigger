@@ -583,22 +583,36 @@ the rule's own guidance never delivered for that write.
 **Where it runs.** A project rule's commands run at the root of the project
 that owns the rule — where its `pytest.ini`, its `Makefile` and its relative
 paths mean what they say. A global rule has no root of its own, so it borrows
-the project of the file that triggered it, falling back to the session's
-working directory when that file belongs to no project. The same global rule
+the project of the file that triggered it — the nearest directory above the
+file holding a `.claude` — falling back to the session's working directory
+when that file belongs to no project. Your home directory's own `.claude` does
+not count as that project: it is the global scope, not a repository, so a file
+written directly under home falls back to the session's working directory the
+same way a file that belongs to no project at all does. The same global rule
 therefore runs once per repository it touched, which is the point: `pytest`
 names a different suite in each.
 
 **What comes back.** A failure holds the turn open (`decision: block`) and
 hands Claude, for each failed command, the name of the rule that asked for it,
-the command itself, one status line — `exit code N`, or `timed out after 120s
-and was killed`, or `not finished: this turn's verification time budget ran
-out`, or `could not be started` — and the last 60 lines it printed, stdout and
-stderr interleaved in the order a terminal would have shown them. The rule's
-body is not repeated: it was injected when the file was touched, and paying for
-it twice buys nothing. Every command runs even after one has failed, so a turn
-that wrote in three folders hears about all three at once, and the ones that
-passed are listed at the end, `passed: <command> (rule '<name>')`, one line
-each.
+the command itself, one status line — `exit code N`, `timed out after 120s and
+was killed`, or `not finished: this turn's verification time budget ran out` —
+and the last 60 lines it printed, stdout and stderr interleaved in the order a
+terminal would have shown them, cut to 8k characters when a single line is
+longer than that, keeping the end. The whole reason is capped at 24k, with the
+failures first. The rule's body is not repeated: it was injected when the file
+was touched, and paying for it twice buys nothing. Every command runs even
+after one has failed, so a turn that wrote in three folders hears about all
+three at once, and the ones that passed are listed at the end, `passed:
+<command> (rule '<name>')`, one line each.
+
+**A command that never ran is not a failure.** One the turn's budget was
+already spent before (`not started`) and one the system refused to launch
+(`could not be started`) verified nothing, so neither holds the turn open and
+neither is counted in the usage stats — only a command that actually ran is
+evidence about your code. The user gets one line each. Claude is told too, but
+only as a short "these never ran" section appended to a report it was being
+sent anyway: it should know the verification was incomplete, and there is
+nothing in it for it to fix.
 
 The order is the global scope first, then project scopes from the outermost to
 the innermost, with each distinct command-and-directory pair run once. Two
@@ -620,19 +634,29 @@ consecutive `Stop` blocks as the outer backstop.
 **Timeouts.** 120 s per command: past that the command *and everything it
 started* are killed, and it is reported as a failure carrying whatever it had
 already printed. 540 s for all of a turn's verifications together: a command
-that starts near the end of that budget gets only what is left of it, and one
-that finds nothing left is not started at all — both are reported as the
-turn's budget running out, never as the command's own timeout, because that is
-not what they hit. The turn's budget sits well below the 600 s the `Stop` hook
-itself is given in `hooks.json`, so the hook always outlives its commands and
-gets to print its report. A hook the harness kills prints nothing, and a turn
+that starts near the end of that budget gets only what is left of it, and is
+reported as a failure when the budget kills it — it ran. One that finds nothing
+left is not started at all, and falls under *a command that never ran* above.
+Neither is reported as the command's own timeout, because that is not what
+they hit. The turn's budget sits well below the 600 s the `Stop` hook itself is
+given in `hooks.json`, so the hook always outlives its commands and gets to
+print its report. A hook the harness kills prints nothing, and a turn
 ending with a failing check unreported is the one outcome worse than a slow
 turn.
 
 **Both scopes execute.** Unlike `block: true`, a `verify:` in a project's own
-`.claude/rules-by-path/` runs, with no gate — see the bullet under *Security
-model* and [ADR 1](docs/adr/0001-project-verify-runs-block-stays-inert.md) for
-why the two verbs are treated differently.
+`.claude/rules-by-path/` runs, with no gate. The two verbs answer different
+questions: blocking is the plugin acting on the machine owner's behalf
+*against* the repository, an escalation nothing else in Claude Code grants a
+clone; running a command that arrived with a repository is what Claude Code
+already does, since hooks declared in that repository's
+`.claude/settings.json` run once the directory is trusted — so a project
+`verify:` opens no door the native hooks have not opened. An allowlist was
+considered and rejected: it would pin the command's string and not its
+behaviour (an approved `make check` runs whatever the cloned `Makefile` says),
+and a gate that is not a boundary is worse than none, because it is read as
+one. That decision, and what it costs, is recorded in
+[ADR 1](docs/adr/0001-project-verify-runs-block-stays-inert.md).
 
 The honest limits:
 
@@ -645,9 +669,19 @@ The honest limits:
 - **Still not a claim about correctness.** The plugin does not judge what your
   command asserts, only that it ran and that its failure reached Claude before
   the turn ended. A check that tests nothing passes.
-- **Bounded**: at most 8 commands per rule, 512 chars each, and at most 512
-  written paths remembered per turn. `add` and `update` refuse to write what
-  the hook would drop, and `validate` reports it in a rule written by hand.
+- **A `verify:` Claude wrote itself waits for the next session.** When one of
+  the four editing tools writes a rule file, that rule's commands are skipped
+  for the rest of the session and the user is told, one line per rule —
+  otherwise a model that can write a rule has written itself a shell for the
+  same turn. Claude Code protects its own `settings.json` hooks exactly this
+  way, by snapshotting them at startup. The CLI path is immediate: `add
+  --verify` runs through Bash, which is already a shell, so a rule you or the
+  manage skill add starts verifying at once.
+- **Bounded**: at most 8 commands per rule, 512 chars each, at most 512 written
+  paths remembered per turn and 64 rule files per session, 8k characters of one
+  command's output and 24k for the whole report. `add` and `update` refuse to
+  write what the hook would drop, and `validate` reports it in a rule written
+  by hand.
 
 ## Uninstalling
 

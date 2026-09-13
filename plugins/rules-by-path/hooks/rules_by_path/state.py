@@ -11,7 +11,8 @@ import re
 import stat
 import time
 
-from .constants import (MAX_SESSION_ID_CHARS, STATE_MAX_AGE_SECONDS,
+from .constants import (MAX_RULES_WRITTEN, MAX_SESSION_ID_CHARS,
+                        STATE_MAX_AGE_SECONDS,
                         STATE_READ_CHUNK_BYTES, STATS_FILE_NAME,
                         TOKEN_REGRESSION_SLACK, TRANSCRIPT_TAIL_BYTES,
                         coerce_int, warn)
@@ -196,13 +197,27 @@ def context_size(payload):
     return None
 
 
+def empty_state(rules_written=None):
+    """The state shape shared by every caller that builds one from scratch —
+    `open_state` when there is nothing to read yet, and `reset_session` in
+    `main.py` when a compact/clear drops everything but the session's own
+    rule files. One definition means a key added here later cannot be
+    silently dropped by whichever caller forgot to add it too.
+
+    `rules_written` seeds the one key a reset deliberately keeps; every
+    other caller leaves it at the default, empty list."""
+    return {"calls": 0, "seen": {}, "written": [],
+            "rules_written": list(rules_written) if rules_written else []}
+
+
 def open_state(state_path):
     """Open the session state under an exclusive lock: (fd, state).
 
     state = {"calls": int,
              "seen": {dedup_key: [call number, context tokens or None,
                                   reinjections already sent]},
-             "written": [absolute path, ...]}.
+             "written": [absolute path, ...],
+             "rules_written": [absolute path, ...]}.
 
     Both measures are recorded because rules choose their own unit: one rule may
     ask to be repeated every 30k tokens and another every 25 calls, in the same
@@ -217,10 +232,14 @@ def open_state(state_path):
     malformed value is coerced to [] like the rest, so a state file nobody can
     parse costs a verification rather than the turn.
 
+    `rules_written` is the fourth, and the only one that outlives a turn: the
+    rule files this SESSION wrote itself, whose `verify:` therefore waits for
+    the next session (see `record_rules_written`).
+
     Parallel tool calls each spawn a hook process, so the read-decide-write
     cycle is serialized; on any failure the hook proceeds statelessly rather
     than blocking the tool call."""
-    empty = {"calls": 0, "seen": {}, "written": []}
+    empty = empty_state()
     if state_path is None:
         return None, empty
     try:
@@ -271,7 +290,10 @@ def open_state(state_path):
                 if entry is not None:
                     seen[entry_key] = entry
         written = coerce_written(data.get("written"))
-        return fd, {"calls": calls, "seen": seen, "written": written}
+        rules_written = coerce_written(data.get("rules_written"),
+                                       MAX_RULES_WRITTEN)
+        return fd, {"calls": calls, "seen": seen, "written": written,
+                    "rules_written": rules_written}
     except Exception as exc:
         warn(f"failed reading state {state_path}: {exc}")
         return None, empty

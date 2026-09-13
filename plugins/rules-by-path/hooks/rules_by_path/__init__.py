@@ -11,12 +11,16 @@ glob it applies to in its own frontmatter:
     glob: src/api/**
     exclude: src/api/**/*.test.py
     tool: write
+    verify: pytest -q tests/api
     remember_again_after: 30k
     ---
     Every endpoint must validate its input.
 
 `exclude` and `tool` are optional and restrictive: a rule applies when one glob
 matches, no exclude matches, and the tool call is of a kind `tool` accepts.
+`verify` narrows nothing — it names a command (or a list of them) that the
+`Stop` hook runs at the end of a turn in which a matching file was WRITTEN, and
+whose failure holds the turn open; see `verify.py`.
 
 Scopes: every `.claude/rules-by-path/` from the touched file's directory up to
 the filesystem root, plus the global scope, `~/.claude/rules-by-path/`.
@@ -68,6 +72,7 @@ Layout — one concern per module, none over 400 lines:
     context.py      assembling the injected text, defanging forged framing
     verify.py       the Stop hook: which `verify:` commands a turn owes
     verifyrun.py    running one of them, and the tail of what it printed
+    verifyreport.py what comes back: the block reason, and the user's line
     main.py         the four entry points Claude Code calls
 
 This module re-exports the surface the admin CLI and the test suite import.
@@ -77,7 +82,7 @@ address the hook by that path.
 """
 
 from .constants import (ADMIN_COMMAND, BRAZILIAN_PORTUGUESE,
-                        CONFIG_FILE_NAME, DEFAULT_LANGUAGE,
+                        CLAUDE_DIR_NAME, CONFIG_FILE_NAME, DEFAULT_LANGUAGE,
                         DEFAULT_REMEMBER_AGAIN_CALLS,
                         DEFAULT_REMEMBER_AGAIN_TOKENS,
                         BLOCK_REASON_TEMPLATE, FILE_PATH_KEYS,
@@ -93,7 +98,8 @@ from .constants import (ADMIN_COMMAND, BRAZILIAN_PORTUGUESE,
                         MAX_GLOBS_PER_RULE, MAX_LANGUAGE_CHARS,
                         MAX_REINJECTIONS_PER_RULE,
                         MAX_RULE_CHARS, MAX_RULE_NAME_CHARS, MAX_RULE_TYPES,
-                        MAX_RULES_PER_SCOPE, MAX_SCOPES, MAX_SESSION_ID_CHARS,
+                        MAX_RULES_PER_SCOPE, MAX_RULES_WRITTEN, MAX_SCOPES,
+                        MAX_SESSION_ID_CHARS,
                         MAX_VERIFY_COMMAND_CHARS, MAX_VERIFY_COMMANDS,
                         MAX_WRITTEN_PATHS,
                         MAX_TOTAL_CHARS, MAX_TYPE_PREFIX_CHARS,
@@ -113,7 +119,8 @@ from .constants import (ADMIN_COMMAND, BRAZILIAN_PORTUGUESE,
                         VERIFY_COMMAND_TIMEOUT_SECONDS,
                         VERIFY_HOOK_TIMEOUT_SECONDS, VERIFY_KEY,
                         VERIFY_KILL_DRAIN_SECONDS, VERIFY_NONE,
-                        VERIFY_OUTPUT_TAIL_LINES,
+                        VERIFY_OUTPUT_CUT_MARKER, VERIFY_OUTPUT_TAIL_LINES,
+                        VERIFY_OUTPUT_TAIL_MAX_CHARS,
                         VERIFY_TOTAL_BUDGET_SECONDS,
                         WRITE_TOOL_NAMES, warn)
 from .messages import (ENFORCE_DENY_REASON_TEMPLATE_KEY,
@@ -122,9 +129,12 @@ from .messages import (ENFORCE_DENY_REASON_TEMPLATE_KEY,
                        SHIPPED_LANGUAGES, SUPERSEDE_NOTICE_KEY,
                        TRUNCATION_NOTICE_KEY, VERIFY_ERROR_KEY,
                        VERIFY_EXIT_CODE_KEY, VERIFY_FAILURE_KEY,
-                       VERIFY_NO_OUTPUT_KEY, VERIFY_OUT_OF_TIME_KEY,
-                       VERIFY_PASSED_KEY, VERIFY_REPORT_HEADER_KEY,
-                       VERIFY_SYSTEM_MESSAGE_KEY, VERIFY_TIMED_OUT_KEY,
+                       VERIFY_NO_OUTPUT_KEY, VERIFY_NOT_RUN_HEADER_KEY,
+                       VERIFY_NOT_RUN_KEY, VERIFY_NOT_STARTED_KEY,
+                       VERIFY_OUT_OF_TIME_KEY, VERIFY_PASSED_KEY,
+                       VERIFY_REPORT_CUT_KEY, VERIFY_REPORT_HEADER_KEY,
+                       VERIFY_SYSTEM_MESSAGE_KEY, VERIFY_SYSTEM_NOT_RUN_KEY,
+                       VERIFY_SYSTEM_RULE_WRITTEN_KEY, VERIFY_TIMED_OUT_KEY,
                        canonical_language,
                        has_translation, messages_for, normalize_language,
                        sanitize_language)
@@ -157,13 +167,15 @@ from .state import (cleanup_stale_state, close_state,
                     save_state, state_dir, state_file_for)
 from .stats import (load_stats, matched_dir, record_injections,
                     record_verifications, rule_key, stats_path, update_stats)
-from .written import coerce_written, record_written, take_written
+from .written import (coerce_written, record_rules_written, record_written,
+                      take_written)
 from .context import build_context, defang, neutralize
-from .verifyrun import (CommandResult, STATUS_ERROR, STATUS_FAILED,
-                        STATUS_OUT_OF_TIME, STATUS_PASSED, STATUS_TIMED_OUT,
-                        out_of_time, run_command, tail)
-from .verify import (VerifyJob, build_report, build_system_message,
-                     collect_jobs, job_cwd, run_jobs, scope_order, status_line,
-                     take_turn_writes, verify_turn)
+from .verifyrun import (CommandResult, DID_NOT_RUN_STATUSES, STATUS_ERROR,
+                        STATUS_FAILED, STATUS_NOT_STARTED, STATUS_OUT_OF_TIME,
+                        STATUS_PASSED, STATUS_TIMED_OUT, not_started,
+                        run_command, tail)
+from .verifyreport import build_report, build_system_message, status_line
+from .verify import (VerifyJob, collect_jobs, job_cwd,
+                     run_jobs, scope_order, take_turn_writes, verify_turn)
 from .main import (build_blocks, cli, config_for_scopes, blocking_rule, main,
                    messages_for_scopes, reset_session, session_notice)

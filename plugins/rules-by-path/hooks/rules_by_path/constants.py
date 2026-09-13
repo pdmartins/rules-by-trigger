@@ -11,7 +11,11 @@ PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))
 ADMIN_COMMAND = os.path.join(PLUGIN_ROOT, "bin", "rules-by-path")
 
-RULES_DIR_RELPATH = os.path.join(".claude", "rules-by-path")
+# The harness's own configuration directory. It is what marks a project root
+# for a rule that has no root of its own (see `project_root_of`), and the
+# rules directory lives inside it, so the name is written once.
+CLAUDE_DIR_NAME = ".claude"
+RULES_DIR_RELPATH = os.path.join(CLAUDE_DIR_NAME, "rules-by-path")
 LEGACY_MAP_NAME = "rules-map.yml"
 FILE_PATH_KEYS = ("file_path", "notebook_path", "path")
 # The only tools `block: true` ever acts on. Read/Grep never write, so a
@@ -54,10 +58,27 @@ VERIFY_COMMAND_TIMEOUT_SECONDS = 120
 # failing assertion and its traceback; a whole build log would cost more context
 # than the failure it reports.
 VERIFY_OUTPUT_TAIL_LINES = 60
+# The same ceiling in bytes, because lines are not a bound on size: a minified
+# bundle, a base64 blob or a progress bar that never breaks its line is ONE line
+# and would otherwise be the whole report. Sized as sixty lines of a wide
+# terminal, so a normal traceback is never touched by it.
+VERIFY_OUTPUT_TAIL_MAX_CHARS = 8_000
+# What the byte cut leaves behind, at the START of what survives — the end of the
+# output is what is kept (see `tail`), so the marker says the beginning is gone.
+# It lives here rather than in the translation table because `verifyrun.py`
+# applies it and, by design, knows nothing about the reader's language: it is a
+# marker like TRUNCATION_NOTICE, not a sentence the report composes.
+VERIFY_OUTPUT_CUT_MARKER = "[...earlier output cut by the rules-by-path size limit...]\n"
 # How many written paths one session remembers between verifications. The list
 # is session state on disk like everything else here, so it is bounded: without
 # a cap a long session writing thousands of files would grow it without end.
 MAX_WRITTEN_PATHS = 512
+# How many rule files one session remembers having WRITTEN itself. A `verify:`
+# in one of them waits for the next session (see `record_rules_written`), so the
+# list outlives a turn and a reset — hence a cap of its own, well below the one
+# above: a session that writes more than this many rule files is not a session
+# this gate has to serve.
+MAX_RULES_WRITTEN = 64
 # What the `Stop` hook gets from Claude Code before it is killed and its output
 # discarded. `hooks/hooks.json` mirrors this number by hand, because JSON cannot
 # import a constant — the test suite asserts the two still agree.
@@ -81,7 +102,7 @@ VERIFY_KILL_DRAIN_SECONDS = 5
 # cut exists at all, and why the soft one nags well below it.
 MAX_RULE_CHARS = 4_000  # a rule states constraints; it is not documentation
 RULE_WARN_CHARS = 2_000  # `validate` nags above this
-MAX_TOTAL_CHARS = 24_000  # ceiling for one injection
+MAX_TOTAL_CHARS = 24_000  # ceiling for one injection, and for one block reason
 # A configured limit is clamped to this range. The ceiling is one injection's
 # budget: a single rule allowed to exceed it could never be delivered whole. The
 # floor is small enough for a one-line rule and large enough not to be a trap.

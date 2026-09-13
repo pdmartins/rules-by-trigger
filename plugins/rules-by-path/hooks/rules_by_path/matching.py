@@ -118,7 +118,8 @@ def applied_glob(fields, targets, kind=None, deadline=None):
     return matched
 
 
-def collect_candidates(abs_path, real_abs, scopes, tool_name=None):
+def collect_candidates(abs_path, real_abs, scopes, tool_name=None,
+                       index_cache=None):
     """(candidates, legacy_scope_labels) for a touched file.
 
     A candidate is (scope_dir, label, name, glob, fields) — one per applying
@@ -130,7 +131,14 @@ def collect_candidates(abs_path, real_abs, scopes, tool_name=None):
     another's time: a nested scope is consulted before the repository root, so a
     shared budget let a vendored directory full of expensive globs starve the
     root's rules on every single tool call — permanently, since the budget is
-    recomputed per call."""
+    recomputed per call.
+
+    `index_cache` is a caller-owned dict, and only the end of a turn passes one:
+    a `Stop` hook asks this same question once per written path, and forty
+    writes into one folder meant reading every frontmatter of every scope forty
+    times. A tool call asks it once, so the injection path passes nothing and
+    behaves exactly as it did — the cache must not outlive the caller that owns
+    it, or an edited rule would stay stale for the rest of the session."""
     candidates = []
     legacy = []
     budget_hit = False
@@ -144,7 +152,13 @@ def collect_candidates(abs_path, real_abs, scopes, tool_name=None):
         if has_legacy_map(scope_dir):
             legacy.append(label)
         targets = path_targets(abs_path, real_abs, base_dir)
-        for name, fields in scope_index(scope_dir):
+        if index_cache is None:
+            entries = scope_index(scope_dir)
+        else:
+            entries = index_cache.get(scope_dir)
+            if entries is None:
+                entries = index_cache[scope_dir] = scope_index(scope_dir)
+        for name, fields in entries:
             if time.monotonic() > deadline:
                 budget_hit = True
                 break

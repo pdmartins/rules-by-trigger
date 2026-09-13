@@ -14,12 +14,18 @@ model and never what runs, because a WRITE is the trigger either way (spec
 Q14). `exclude:` still applies — it is the same matcher.
 
 What the model gets back is `decision: block` with the failures, and nothing at
-all when everything passed: the user is told about a passing check through
-`systemMessage`, and Claude's context does not pay for good news (spec Q15).
+all when nothing that RAN failed: the user is told about a passing check — and
+about a command that never ran at all — through `systemMessage`, and Claude's
+context does not pay for good news (spec Q15).
 
-Running a command is `verifyrun.py`'s business, and the sentences are the
-translation table's; this module owns the order, the deduplication, the clock
-they all share, and the report."""
+Running a command is `verifyrun.py`'s business and writing the report is
+`verifyreport.py`'s; this module owns the selection, the order, the
+deduplication and the clock they all share.
+
+One rule never runs, however it matches: one whose file THIS session wrote (see
+`record_rules_written`). Claude Code protects its own hooks the same way, by
+snapshotting `settings.json` at startup, and for the same reason — a model that
+can write a hook and have it run in the same turn has written itself a shell."""
 
 import collections
 import json
@@ -29,20 +35,14 @@ import time
 
 from .constants import (VERIFY_COMMAND_TIMEOUT_SECONDS,
                         VERIFY_TOTAL_BUDGET_SECONDS, warn)
-from .context import neutralize
-from .discovery import find_scopes
+from .discovery import find_scopes, project_root_of
 from .frontmatter import verify_of
 from .matching import collect_candidates
-from .messages import (VERIFY_ERROR_KEY, VERIFY_EXIT_CODE_KEY,
-                       VERIFY_FAILURE_KEY, VERIFY_NO_OUTPUT_KEY,
-                       VERIFY_OUT_OF_TIME_KEY, VERIFY_PASSED_KEY,
-                       VERIFY_REPORT_HEADER_KEY, VERIFY_SYSTEM_MESSAGE_KEY,
-                       VERIFY_TIMED_OUT_KEY)
 from .state import close_state, open_state, save_state, state_file_for
 from .stats import record_verifications
-from .verifyrun import (STATUS_ERROR, STATUS_FAILED, STATUS_OUT_OF_TIME,
-                        STATUS_PASSED, STATUS_TIMED_OUT, out_of_time,
-                        run_command)
+from .verifyreport import build_report, build_system_message, split_results
+from .verifyrun import (DID_NOT_RUN_STATUSES, STATUS_OUT_OF_TIME, STATUS_PASSED,
+                        STATUS_TIMED_OUT, not_started, run_command)
 from .written import take_written
 
 # One command to run, and who asked for it:
@@ -52,15 +52,6 @@ from .written import take_written
 #   rules      [(scope_dir, name)] every rule this one run answers for, so a
 #              command two rules share is counted for both (spec Q16)
 VerifyJob = collections.namedtuple("VerifyJob", "command cwd name rules")
-
-# Which sentence describes a status. PASSED is absent on purpose: a passing
-# command has a summary line and no status line of its own.
-STATUS_MESSAGE_KEYS = {
-    STATUS_FAILED: VERIFY_EXIT_CODE_KEY,
-    STATUS_TIMED_OUT: VERIFY_TIMED_OUT_KEY,
-    STATUS_OUT_OF_TIME: VERIFY_OUT_OF_TIME_KEY,
-    STATUS_ERROR: VERIFY_ERROR_KEY,
-}
 
 
 def scope_order(base_dir):
@@ -76,24 +67,44 @@ def scope_order(base_dir):
     return (1, len([segment for segment in base_dir.split("/") if segment]))
 
 
-def job_cwd(base_dir, scopes, session_cwd):
+def job_cwd(base_dir, project_root, session_cwd):
     """Where one rule's commands run (spec Q6).
 
     A project rule runs at the root of the project that owns it: that is where
     its `pytest.ini`, its `Makefile` and its own relative paths make sense. A
-    global rule has no root of its own, so it borrows the one of the file that
-    triggered it — the innermost project scope found for that path — and falls
-    back to the session's cwd when the file belongs to no project at all. The
-    same global rule therefore runs once per repository it touched, which is
-    the point: `pytest` means a different suite in each."""
+    global rule has no root of its own, so it borrows the root of the project
+    the written file belongs to — the innermost directory above it holding a
+    `.claude` (see `project_root_of`) — and falls back to the session's cwd
+    when the file belongs to no project at all. The same global rule therefore
+    runs once per repository it touched, which is the point: `pytest` means a
+    different suite in each.
+
+    What it borrows is deliberately NOT the innermost RULES scope: a repository
+    that ships no `.claude/rules-by-path/` of its own is still a project, and
+    running the user's global `pytest` at the session's cwd instead of at that
+    repository's root is how a global rule ends up testing the wrong tree."""
     if base_dir is not None:
         return base_dir
-    innermost_project = scopes[-1][0] if scopes else None
-    return innermost_project or session_cwd
+    return project_root or session_cwd
 
 
-def collect_jobs(written, session_cwd, deadline=None):
-    """The commands this turn owes, in the order they run and deduplicated.
+def rule_file_written(scope_dir, name, session_rules):
+    """True when this rule's own file is one this session wrote.
+
+    The rule file is `scope_dir/name` — the same path `read_rule_file` opens.
+    Both spellings are compared, the literal one and the resolved one, because
+    the write recorded both and the scope walk may have reached the directory
+    through either (a symlinked `.claude`, a monorepo alias)."""
+    path = os.path.join(scope_dir, name).replace(os.sep, "/")
+    if path in session_rules:
+        return True
+    return os.path.realpath(path).replace(os.sep, "/") in session_rules
+
+
+def collect_jobs(written, session_cwd, deadline=None, rules_written=()):
+    """(jobs, deferred rule names) — the commands this turn owes, in the order
+    they run and deduplicated, and the rules whose commands are deliberately
+    not among them.
 
     One job per distinct (command, cwd) pair: a global rule that covers two
     repositories runs once in each, and two rules of the same project asking
@@ -101,8 +112,18 @@ def collect_jobs(written, session_cwd, deadline=None):
     shared a job are all remembered on it — the command ran on behalf of every
     one of them, and the usage stats say so.
 
+    `rules_written` is the session's own rule-file writes, and a rule whose
+    file is in it contributes no job at all: its `verify:` may be one the model
+    wrote itself minutes ago, and a hook the model can add and have run in the
+    same turn is a shell it granted itself. It is deferred, not dropped — the
+    next session reads the file with no such history and runs it, which is
+    exactly what Claude Code's own `settings.json` snapshot does.
+
     A path whose tree holds no rules directory at all costs one `find_scopes`
-    and nothing else.
+    and nothing else. The scopes, the project root and each scope's index are
+    memoised for the duration of this call: a turn that wrote forty files in
+    one folder used to walk the ancestors and re-read every frontmatter of
+    every scope forty times over, all to reach the same answer.
 
     `deadline` is a `time.monotonic()` value and it is the turn's, not this
     function's: selecting is walking scopes and matching globs once per written
@@ -111,6 +132,10 @@ def collect_jobs(written, session_cwd, deadline=None):
     command ran — which reports nothing at all. Past it the remaining paths are
     left unverified, out loud."""
     entries = []
+    deferred = []
+    session_rules = set(rules_written)
+    directory_cache = {}
+    index_cache = {}
     for abs_path in written:
         if deadline is not None and time.monotonic() > deadline:
             warn(f"the turn's verification budget ran out while choosing what "
@@ -121,18 +146,34 @@ def collect_jobs(written, session_cwd, deadline=None):
             # the resolved one is computed here, exactly as `main()` does, so a
             # rule written against either spelling matches (see `path_targets`).
             real_abs = os.path.realpath(abs_path).replace(os.sep, "/")
-            scopes = find_scopes(os.path.dirname(abs_path))
+            directory = os.path.dirname(abs_path)
+            found = directory_cache.get(directory)
+            if found is None:
+                found = (find_scopes(directory), project_root_of(directory))
+                directory_cache[directory] = found
+            scopes, project_root = found
             if not scopes:
                 continue
-            candidates, _legacy = collect_candidates(abs_path, real_abs, scopes)
+            candidates, _legacy = collect_candidates(abs_path, real_abs, scopes,
+                                                     index_cache=index_cache)
         except Exception as exc:
             warn(f"skipping {abs_path} while collecting verifications: {exc}")
             continue
         base_dirs = {scope_dir: base_dir for base_dir, scope_dir, _label in scopes}
         for scope_dir, _label, name, _glob, fields in candidates:
+            commands = verify_of(fields)
+            if not commands:
+                continue
+            if session_rules and rule_file_written(scope_dir, name, session_rules):
+                if (scope_dir, name) not in deferred:
+                    deferred.append((scope_dir, name))
+                    warn(f"the verify: in rule {name!r} ({scope_dir}) was "
+                         f"written by this session, so it runs from the next "
+                         f"one — as a hook added to settings.json does")
+                continue
             base_dir = base_dirs.get(scope_dir)
-            cwd = job_cwd(base_dir, scopes, session_cwd)
-            for command in verify_of(fields):
+            cwd = job_cwd(base_dir, project_root, session_cwd)
+            for command in commands:
                 entries.append((scope_order(base_dir),
                                 (command, cwd, scope_dir, name)))
     entries.sort(key=lambda entry: entry[0])
@@ -146,7 +187,7 @@ def collect_jobs(written, session_cwd, deadline=None):
             jobs.append(job)
         if (scope_dir, name) not in job.rules:
             job.rules.append((scope_dir, name))
-    return jobs
+    return jobs, [name for _scope_dir, name in deferred]
 
 
 def run_jobs(jobs, budget=VERIFY_TOTAL_BUDGET_SECONDS,
@@ -161,9 +202,11 @@ def run_jobs(jobs, budget=VERIFY_TOTAL_BUDGET_SECONDS,
     and DISCARDS its output, which would end the turn silently with a failing
     verification nobody reported. So a command that starts near the end of the
     budget gets only what is left of it, and one that finds nothing left is not
-    started at all — both are reported as "the turn's time ran out", never as
-    the command's own timeout, because the command's own allowance is not what
-    they hit.
+    started at all. Neither is reported as the command's own timeout, because
+    the command's own allowance is not what they hit — and the two are not
+    reported as each other either: the one that was killed mid-run RAN and can
+    block the turn, while the one that never started is not evidence about
+    anything (see `split_results`).
 
     `budget` and `command_timeout` are parameters with the constants as
     defaults, so a test can prove the cutoff without waiting nine minutes."""
@@ -172,7 +215,7 @@ def run_jobs(jobs, budget=VERIFY_TOTAL_BUDGET_SECONDS,
     for job in jobs:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            results.append((job, out_of_time()))
+            results.append((job, not_started()))
             continue
         allowance = min(command_timeout, remaining)
         result = run_command(job.command, job.cwd, allowance)
@@ -182,58 +225,15 @@ def run_jobs(jobs, budget=VERIFY_TOTAL_BUDGET_SECONDS,
     return results
 
 
-def status_line(result, messages):
-    """The one line that says what became of a failed command."""
-    key = STATUS_MESSAGE_KEYS.get(result.status, VERIFY_ERROR_KEY)
-    return messages[key].format(code=result.exit_code,
-                                seconds=round(result.seconds or 0))
-
-
-def build_report(results, messages):
-    """The reason a failed turn holds on, or None when nothing failed.
-
-    Per failure: the rule that asked for the command, the command, what became
-    of it, and the tail of what it printed (spec Q12) — the rule's own body is
-    NOT here, because it was injected when the file was touched and paying for
-    it twice buys nothing. The passing commands are one line each at the end,
-    so the model reads what ran as well as what broke.
-
-    Everything that came from a rule file or from a command's output is
-    neutralized on the way in: the report is text the model reads with the
-    harness's own authority, and command output is the least trusted string in
-    this plugin — it is whatever the repository's test suite chose to print."""
-    failures = [(job, result) for job, result in results
-                if result.status != STATUS_PASSED]
-    if not failures:
-        return None
-    blocks = [messages[VERIFY_REPORT_HEADER_KEY].format(failed=len(failures),
-                                                        total=len(results))]
-    for job, result in failures:
-        blocks.append(messages[VERIFY_FAILURE_KEY].format(
-            name=neutralize(job.name), command=neutralize(job.command),
-            status=status_line(result, messages),
-            output=neutralize(result.output) or messages[VERIFY_NO_OUTPUT_KEY]))
-    passed = [messages[VERIFY_PASSED_KEY].format(command=neutralize(job.command),
-                                                 name=neutralize(job.name))
-              for job, result in results if result.status == STATUS_PASSED]
-    if passed:
-        blocks.append("\n".join(passed))
-    return "\n\n".join(blocks)
-
-
-def build_system_message(results, messages):
-    """One line per command, for the USER and not for Claude (spec Q15).
-
-    A verification that passed is not news the model has to spend context on;
-    it is the user who asked for the check and wants to see it ran."""
-    return "\n".join(
-        messages[VERIFY_SYSTEM_MESSAGE_KEY].format(
-            command=neutralize(job.command), name=neutralize(job.name))
-        for job, _result in results)
-
-
 def take_turn_writes(session_id):
-    """The paths written since the last verification, taken and cleared.
+    """(paths written since the last verification, rule files this session
+    wrote) — the first list taken and cleared, the second only read.
+
+    The two have different lifetimes on purpose. The writes are the turn's, and
+    a verification that consumed them must not be handed them again. The rule
+    files are the session's: they are what says a `verify:` was authored here
+    and waits for the next session, so nothing clears them until the session
+    itself is over (see `record_rules_written`).
 
     The lock is held for exactly this: the list is read, emptied and saved, and
     the state file is closed BEFORE the first command runs. A verification that
@@ -247,13 +247,13 @@ def take_turn_writes(session_id):
     hook that found nothing to do should cost."""
     state_path = state_file_for(session_id, create=False)
     if state_path is None or not os.path.isfile(state_path):
-        return []
+        return [], []
     state_fd, state = open_state(state_path)
     try:
         written = take_written(state)
         if written:
             save_state(state_fd, state)
-        return written
+        return written, state.get("rules_written") or []
     finally:
         close_state(state_fd)
 
@@ -274,14 +274,15 @@ def verify_turn():
     if not isinstance(payload, dict):
         return
     session_id = payload.get("session_id")
-    written = take_turn_writes(session_id)
+    written, rules_written = take_turn_writes(session_id)
     if not written:
         return
     # One clock for the whole hook: choosing what to verify and running it
     # answer to the same budget, because the harness's timeout does.
     deadline = time.monotonic() + VERIFY_TOTAL_BUDGET_SECONDS
-    jobs = collect_jobs(written, payload.get("cwd") or os.getcwd(), deadline)
-    if not jobs:
+    jobs, deferred = collect_jobs(written, payload.get("cwd") or os.getcwd(),
+                                  deadline, rules_written)
+    if not jobs and not deferred:
         return
     # Deferred: `main` imports this module for the `--verify` entry point, so
     # importing it back at module level would be a cycle. The language is the
@@ -297,14 +298,37 @@ def verify_turn():
     # just said "block" cannot assume it will be left running afterwards. A
     # locked write of one small file is what it costs; a command that ran and
     # was never counted is what it buys.
+    #
+    # Only the commands that RAN are counted. A command the budget never let
+    # start, or one the environment refused to launch, says nothing about the
+    # rule that asked for it: counting it would make `status` report a
+    # verification that never happened, with a failure rate that is the
+    # machine's and not the code's.
     record_verifications(session_id,
                          [(scope_dir, name, result.status == STATUS_PASSED)
                           for job, result in results
+                          if result.status not in DID_NOT_RUN_STATUSES
                           for scope_dir, name in job.rules])
     report = build_report(results, messages)
-    if report is not None:
-        print(json.dumps({"decision": "block", "reason": report}))
+    if report is None:
+        output = {"systemMessage":
+                  build_system_message(results, messages, deferred)}
     else:
-        print(json.dumps({"systemMessage":
-                          build_system_message(results, messages)}))
+        output = {"decision": "block", "reason": report}
+        # A blocked turn still owes the user the lines that are theirs alone:
+        # the one about a rule whose `verify:` was deferred, and one per
+        # command that never ran — the budget was spent, or the environment
+        # refused to launch it. Neither is shown to them any other way: stderr
+        # is not shown to them, and both are appendices in the model's report,
+        # not lines of their own (see `build_report`). A command that PASSED
+        # stays out of `systemMessage` here on purpose: on a blocked turn it is
+        # already one line inside the report the model reads, and repeating it
+        # to the user would be the same news twice. `systemMessage` travels
+        # beside the decision — the harness reads the common fields of every
+        # hook output.
+        _failures, did_not_run = split_results(results)
+        deferred_lines = build_system_message(did_not_run, messages, deferred)
+        if deferred_lines:
+            output["systemMessage"] = deferred_lines
+    print(json.dumps(output))
     sys.stdout.flush()

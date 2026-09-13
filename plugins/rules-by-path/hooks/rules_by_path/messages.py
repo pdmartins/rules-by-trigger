@@ -51,17 +51,25 @@ VERIFY_FAILURE_KEY = "VERIFY_FAILURE"
 VERIFY_EXIT_CODE_KEY = "VERIFY_EXIT_CODE"
 VERIFY_TIMED_OUT_KEY = "VERIFY_TIMED_OUT"
 VERIFY_OUT_OF_TIME_KEY = "VERIFY_OUT_OF_TIME"
+VERIFY_NOT_STARTED_KEY = "VERIFY_NOT_STARTED"
 VERIFY_ERROR_KEY = "VERIFY_ERROR"
 VERIFY_NO_OUTPUT_KEY = "VERIFY_NO_OUTPUT"
 VERIFY_PASSED_KEY = "VERIFY_PASSED"
+VERIFY_REPORT_CUT_KEY = "VERIFY_REPORT_CUT"
+VERIFY_NOT_RUN_HEADER_KEY = "VERIFY_NOT_RUN_HEADER"
+VERIFY_NOT_RUN_KEY = "VERIFY_NOT_RUN"
 VERIFY_SYSTEM_MESSAGE_KEY = "VERIFY_SYSTEM_MESSAGE"
+VERIFY_SYSTEM_NOT_RUN_KEY = "VERIFY_SYSTEM_NOT_RUN"
+VERIFY_SYSTEM_RULE_WRITTEN_KEY = "VERIFY_SYSTEM_RULE_WRITTEN"
 MESSAGE_KEYS = (LEGACY_NOTICE_KEY, SESSION_NOTICE_KEY, TRUNCATION_NOTICE_KEY,
                 SUPERSEDE_NOTICE_KEY, ENFORCE_DENY_REASON_TEMPLATE_KEY,
                 VERIFY_REPORT_HEADER_KEY, VERIFY_FAILURE_KEY,
                 VERIFY_EXIT_CODE_KEY, VERIFY_TIMED_OUT_KEY,
-                VERIFY_OUT_OF_TIME_KEY, VERIFY_ERROR_KEY,
-                VERIFY_NO_OUTPUT_KEY, VERIFY_PASSED_KEY,
-                VERIFY_SYSTEM_MESSAGE_KEY)
+                VERIFY_OUT_OF_TIME_KEY, VERIFY_NOT_STARTED_KEY,
+                VERIFY_ERROR_KEY, VERIFY_NO_OUTPUT_KEY, VERIFY_PASSED_KEY,
+                VERIFY_REPORT_CUT_KEY, VERIFY_NOT_RUN_HEADER_KEY,
+                VERIFY_NOT_RUN_KEY, VERIFY_SYSTEM_MESSAGE_KEY,
+                VERIFY_SYSTEM_NOT_RUN_KEY, VERIFY_SYSTEM_RULE_WRITTEN_KEY)
 
 # Two spellings of the same separator, because a language code is written both
 # ways in the wild and nobody should have to guess which one this file wants.
@@ -94,11 +102,26 @@ MESSAGES = {
         VERIFY_TIMED_OUT_KEY: "timed out after {seconds}s and was killed",
         VERIFY_OUT_OF_TIME_KEY: ("not finished: this turn's verification time "
                                  "budget ran out"),
+        VERIFY_NOT_STARTED_KEY: ("not started: this turn's verification time "
+                                 "budget was already spent"),
         VERIFY_ERROR_KEY: "could not be started",
         VERIFY_NO_OUTPUT_KEY: "(no output)",
         VERIFY_PASSED_KEY: "passed: {command} (rule {name!r})",
+        VERIFY_REPORT_CUT_KEY: "\n[...report cut by the rules-by-path size limit...]",
+        VERIFY_NOT_RUN_HEADER_KEY: (
+            "These verifications never ran, so what they cover is simply "
+            "unchecked. They are not failures and there is nothing in them to "
+            "fix; they are here so you know the check was incomplete."
+        ),
+        VERIFY_NOT_RUN_KEY: "{command} (rule {name!r}) — {status}",
         VERIFY_SYSTEM_MESSAGE_KEY: ("rules-by-path: verified — {command} "
                                     "(rule {name!r})"),
+        VERIFY_SYSTEM_NOT_RUN_KEY: ("rules-by-path: not run — {command} "
+                                    "(rule {name!r}): {status}"),
+        VERIFY_SYSTEM_RULE_WRITTEN_KEY: (
+            "rules-by-path: the verify: in rule {name!r} was written by this "
+            "session, so it runs from the next one"
+        ),
     },
     BRAZILIAN_PORTUGUESE: {
         LEGACY_NOTICE_KEY: (
@@ -144,11 +167,29 @@ MESSAGES = {
         VERIFY_TIMED_OUT_KEY: "excedeu {seconds}s e foi encerrado",
         VERIFY_OUT_OF_TIME_KEY: ("não terminou: o orçamento de tempo de "
                                  "verificação deste turno acabou"),
+        VERIFY_NOT_STARTED_KEY: ("não foi iniciado: o orçamento de tempo de "
+                                 "verificação deste turno já tinha acabado"),
         VERIFY_ERROR_KEY: "não pôde ser executado",
         VERIFY_NO_OUTPUT_KEY: "(sem saída)",
         VERIFY_PASSED_KEY: "passou: {command} (regra {name!r})",
+        VERIFY_REPORT_CUT_KEY: (
+            "\n[...relatório cortado pelo limite de tamanho do rules-by-path...]"
+        ),
+        VERIFY_NOT_RUN_HEADER_KEY: (
+            "Estas verificações não chegaram a rodar, então o que elas cobrem "
+            "está apenas sem checagem. Não são falhas e não há nada nelas para "
+            "corrigir; estão aqui para você saber que a checagem ficou "
+            "incompleta."
+        ),
+        VERIFY_NOT_RUN_KEY: "{command} (regra {name!r}) — {status}",
         VERIFY_SYSTEM_MESSAGE_KEY: ("rules-by-path: verificado — {command} "
                                     "(regra {name!r})"),
+        VERIFY_SYSTEM_NOT_RUN_KEY: ("rules-by-path: não executada — {command} "
+                                    "(regra {name!r}): {status}"),
+        VERIFY_SYSTEM_RULE_WRITTEN_KEY: (
+            "rules-by-path: o verify: da regra {name!r} foi escrito por esta "
+            "sessão, então ele passa a rodar a partir da próxima"
+        ),
     },
 }
 SHIPPED_LANGUAGES = tuple(MESSAGES)

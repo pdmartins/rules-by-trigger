@@ -17,8 +17,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
   of the session, with no glob to narrow them and no place for the reason the
   check exists. `add` and `update` take `--verify '<command>'`, repeatable,
   with `--verify none` to clear it; `list` and `status` show `verify: N cmds`
-  beside the rule, and `status` counts `verified N, failed M`. A project
-  scope's `verify:` runs where its `block:` stays inert — why, in
+  beside the rule, and `status` counts `verified N, failed M`. A `verify:`
+  that Claude writes into a rule file itself waits for the next session, as a
+  hook added to `settings.json` does, so a rule the model just wrote cannot
+  hand it a shell in the same turn — adding one through the CLI is immediate.
+  A command the turn's budget never let start, or one the environment refused
+  to launch, does not hold the turn open and is not counted as a verification
+  of the rule that asked for it — the user gets one line each, and Claude hears
+  of it only beside a failure it was already being shown. What
+  reaches Claude is bounded: the last 60 lines a command printed, cut to 8,000
+  characters, and the whole report capped at 24,000.
+  A project scope's `verify:` runs where its `block:` stays inert — why, in
   `docs/adr/0001-project-verify-runs-block-stays-inert.md`.
 - `improve` now weighs each rule by what it actually carries: whether Claude
   would have known it from the files it was going to read anyway. A rule

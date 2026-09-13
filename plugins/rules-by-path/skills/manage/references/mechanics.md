@@ -67,10 +67,19 @@ or `config.json`.
   its exit code or timeout, and the last 60 lines it printed; the rule's body
   is not repeated. Commands that passed are one line to the USER and nothing to
   the model.
-- Bounds: 8 commands per rule, 512 characters each, 120 s per command, 540 s
-  for everything one turn owes. A command past a bound is dropped by the hook,
-  so `add` and `update` refuse to write it and `validate` names it in a rule
-  that was written by hand.
+- A command that never ran — the turn's budget was already spent, or the
+  process could not be started — is not a failure: it holds nothing open and
+  counts nothing, since it verified nothing. The user is told; the model only
+  as a short section appended to a report already being sent.
+- A rule file written by Write/Edit during the session has its `verify:`
+  deferred to the next session, and the user is told, the way Claude Code's own
+  `settings.json` hooks take effect only after a restart. Writing the rule
+  through this CLI defers nothing: that path is already a shell.
+- Bounds on the key: 8 commands per rule, 512 characters each. The hook drops
+  what is past them, so `add` and `update` refuse to write it and `validate`
+  names it in a rule written by hand. Bounds at run time: 120 s per command,
+  540 s for everything one turn owes, 8k characters of one command's output and
+  24k for the whole report.
 - Both scopes execute. A project `verify:` is not gated the way `block:` is,
   because a repository's own `.claude/settings.json` hooks already run once its
   directory is trusted.

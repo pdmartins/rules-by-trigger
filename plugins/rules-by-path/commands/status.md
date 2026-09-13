@@ -13,7 +13,9 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 "${CLAUDE_PLUGIN_ROOT}/bin/rules-by-path" status --root "$ROOT" ${ARGUMENTS:+--path "$ARGUMENTS"}
 ```
 
-Two things that look like bugs and are not: a rule injects once per session
+Three things that look like bugs and are not: a rule injects once per session
 per version, so a rule already delivered stays silent until its repeat distance
-is covered; and Bash access (`cat`, `sed`) never triggers injection — only the
-five file tools do.
+is covered; Bash access (`cat`, `sed`) never triggers injection — only the
+five file tools do; and a rule whose `verify:` command has run can still be
+listed as never injected, because that note tracks whether the rule's TEXT ever
+reached a model, which a command running says nothing about.

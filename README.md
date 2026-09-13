@@ -449,9 +449,7 @@ guarantees listed above, each covered by a regression test in
 - **A project rule's `verify:` command runs; a project rule's `block: true`
   does not.** Running a command that arrived with a repository is what Claude
   Code already does for hooks in that repository's `.claude/settings.json`;
-  letting the repository refuse the machine owner's own tool calls is not. The
-  reasoning, and the allowlist that was considered and rejected, are in
-  [ADR 1](docs/adr/0001-project-verify-runs-block-stays-inert.md).
+  letting the repository refuse the machine owner's own tool calls is not.
 
 ### Recommended hardening
 
@@ -655,8 +653,7 @@ already does, since hooks declared in that repository's
 considered and rejected: it would pin the command's string and not its
 behaviour (an approved `make check` runs whatever the cloned `Makefile` says),
 and a gate that is not a boundary is worse than none, because it is read as
-one. That decision, and what it costs, is recorded in
-[ADR 1](docs/adr/0001-project-verify-runs-block-stays-inert.md).
+one.
 
 The honest limits:
 

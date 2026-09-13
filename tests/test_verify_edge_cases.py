@@ -359,7 +359,7 @@ class VerifyInvariantsTest(VerifyEdgeCaseTestCase):
 
     def test_a_missing_command_is_a_failure_that_holds_the_turn_open(self):
         util.write_rule(self.proj, "CONV_src.md", "src/**", "Rule.",
-                        extra_frontmatter=["verify: rules-by-path-no-such-cmd"])
+                        extra_frontmatter=["verify: rules-by-trigger-no-such-cmd"])
         self.wrote(self.source())
         output = self.verify()
         self.assertEqual(output.get("decision"), "block", output)

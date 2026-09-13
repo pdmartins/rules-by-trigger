@@ -11,10 +11,10 @@ import util  # noqa: E402
 
 SETTINGS_RELPATH = os.path.join(".claude", "settings.json")
 HARDENING_ENTRIES = [
-    "Read(**/.claude/rules-by-path/**)",
-    "Edit(**/.claude/rules-by-path/**)",
-    "Read(~/.claude/rules-by-path/**)",
-    "Edit(~/.claude/rules-by-path/**)",
+    "Read(**/.claude/rules-by-trigger/**)",
+    "Edit(**/.claude/rules-by-trigger/**)",
+    "Read(~/.claude/rules-by-trigger/**)",
+    "Edit(~/.claude/rules-by-trigger/**)",
 ]
 
 
@@ -44,7 +44,7 @@ class DoctorTest(util.SandboxTestCase):
         self.assertIn("ok    no pre-plugin manual installation", proc.stdout)
         self.assertIn("can be applied with `doctor --fix`", proc.stdout)
         self.assertIn("ask the user first", proc.stdout)
-        self.assertFalse(os.path.exists(util.state_path(self.home, "rbp-doctor-probe")))
+        self.assertFalse(os.path.exists(util.state_path(self.home, "rbt-doctor-probe")))
 
     def test_legacy_map_is_an_error_that_fix_migrates(self):
         util.write_file(os.path.join(self.scope, "rules-map.yml"),
@@ -80,7 +80,7 @@ class DoctorTest(util.SandboxTestCase):
 
     def test_fix_writes_the_hardening_and_drops_obsolete_entries(self):
         self.write_settings({"permissions": {"deny": ["Read(**/.env)",
-                                                      "Grep(**/.claude/rules-by-path/**)"]},
+                                                      "Grep(**/.claude/rules-by-trigger/**)"]},
                              "model": "opus"})
         proc = self.doctor()
         self.assertIn("obsolete deny entries", proc.stdout)
@@ -94,9 +94,9 @@ class DoctorTest(util.SandboxTestCase):
         self.assertIn("nothing to fix.", proc.stdout)
 
     def test_pre_plugin_installation_is_reported(self):
-        util.write_file(os.path.join(self.home, ".claude", "hooks", "rules-by-path.py"), "#")
+        util.write_file(os.path.join(self.home, ".claude", "hooks", "rules-by-trigger.py"), "#")
         self.write_settings({"hooks": {"PreToolUse": [{"hooks": [
-            {"type": "command", "command": "python3 ~/.claude/hooks/rules-by-path.py"}]}]}})
+            {"type": "command", "command": "python3 ~/.claude/hooks/rules-by-trigger.py"}]}]}})
         proc = self.doctor()
         self.assertEqual(proc.returncode, 1)
         self.assertIn("ERROR pre-plugin hook still registered", proc.stdout)
@@ -113,7 +113,7 @@ class DoctorTest(util.SandboxTestCase):
         self.assertFalse(os.path.exists(util.state_dir(self.home)))
         self.assertTrue(os.path.isfile(os.path.join(self.scope, "CONV_x.md")))
         self.assertIn(f"kept (your rules, 1 file(s)): {self.scope}", proc.stdout)
-        self.assertIn("/plugin uninstall rules-by-path@pdmartins", proc.stdout)
+        self.assertIn("/plugin uninstall rules-by-trigger@pdmartins", proc.stdout)
 
     def test_fix_and_uninstall_belong_to_doctor(self):
         proc = self.admin("list", "--root", self.proj, "--fix")

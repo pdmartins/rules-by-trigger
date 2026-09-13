@@ -1,7 +1,7 @@
 """The `language` setting: what a config layer may say, what that selects, and
 the one thing it can never do — put its own words into the text the hook
-injects around the rules (rules_by_path.messages, the wiring in
-rules_by_path.config / context / main)."""
+injects around the rules (rules_by_trigger.messages, the wiring in
+rules_by_trigger.config / context / main)."""
 
 import contextlib
 import io

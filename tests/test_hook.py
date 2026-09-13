@@ -1,4 +1,4 @@
-"""End-to-end tests for hooks/rules-by-path.py: what the hook injects, when it
+"""End-to-end tests for hooks/rules-by-trigger.py: what the hook injects, when it
 repeats a rule, and what SessionStart announces. The pure parsing and matching
 functions are covered in test_frontmatter.py."""
 
@@ -159,7 +159,7 @@ class ReinforcementTest(util.SandboxTestCase):
     def test_the_rule_is_sent_again_whole_after_the_configured_distance(self):
         body = "Always validate DTOs.\n\nMore detail, sent again with the rest."
         util.write_rule(self.proj, "src.md", "src/**", body)
-        env = {"RULES_BY_PATH_REMEMBER_AGAIN_AFTER": "3 calls"}
+        env = {"RULES_BY_TRIGGER_REMEMBER_AGAIN_AFTER": "3 calls"}
         first = self.inject(env=env)
         self.assertIn("Always validate DTOs.", first)
         self.assertIsNone(self.inject(env=env), "call 2: nothing")
@@ -172,9 +172,7 @@ class ReinforcementTest(util.SandboxTestCase):
 
     def test_repetition_can_be_disabled(self):
         util.write_rule(self.proj, "src.md", "src/**", "Rule text.")
-        # Deliberately the pre-0.4.0 spelling: an installation that exported it
-        # must keep the behaviour it configured.
-        env = {"RULES_BY_PATH_REMEMBER_AFTER": "never"}
+        env = {"RULES_BY_TRIGGER_REMEMBER_AGAIN_AFTER": "never"}
         self.assertIsNotNone(self.inject(env=env))
         for _ in range(6):
             self.assertIsNone(self.inject(env=env))
@@ -182,7 +180,7 @@ class ReinforcementTest(util.SandboxTestCase):
     def test_per_rule_override_wins(self):
         util.write_rule(self.proj, "src.md", "src/**", "Rule text.",
                         extra_frontmatter=["remember_again_after: never"])
-        env = {"RULES_BY_PATH_REMEMBER_AGAIN_AFTER": "2 calls"}
+        env = {"RULES_BY_TRIGGER_REMEMBER_AGAIN_AFTER": "2 calls"}
         self.assertIsNotNone(self.inject(env=env))
         for _ in range(5):
             self.assertIsNone(self.inject(env=env))
@@ -259,7 +257,7 @@ class ReinforcementTest(util.SandboxTestCase):
 
     def test_edited_rule_is_treated_as_a_new_rule(self):
         util.write_rule(self.proj, "src.md", "src/**", "VERSION ONE")
-        env = {"RULES_BY_PATH_REMEMBER_AGAIN_AFTER": "50 calls"}
+        env = {"RULES_BY_TRIGGER_REMEMBER_AGAIN_AFTER": "50 calls"}
         self.assertIn("VERSION ONE", self.inject(env=env))
         self.assertIsNone(self.inject(env=env))
         util.write_rule(self.proj, "src.md", "src/**", "VERSION TWO body line")
@@ -291,7 +289,7 @@ class SessionNoticeTest(util.SandboxTestCase):
         util.write_rule(self.home, "g.md", "**", "Global rule.")
         text = self.notice()
         self.assertIsNotNone(text)
-        self.assertIn("rules-by-path", text)
+        self.assertIn("rules-by-trigger", text)
         self.assertIn("list", text, "the notice must name the way in")
 
     def test_announced_when_only_a_project_scope_exists(self):

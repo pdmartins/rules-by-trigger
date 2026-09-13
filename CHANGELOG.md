@@ -5,6 +5,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
+The plugin is renamed `rules-by-trigger`, and a rule can now declare a
+`verify:` command that runs at the end of the turn.
+
 ### Added
 
 - **`verify:` — a rule can now declare a command, and the hook runs it at the
@@ -40,6 +43,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ### Changed
 
+- **Breaking:** the plugin is now `rules-by-trigger`. It already does more
+  than inject a rule when a path matches — it blocks writes and verifies at the
+  end of a turn — and it is about to gain triggers that are not paths. There is
+  no compatibility period: everything that carried the old name moves. To
+  upgrade, uninstall `rules-by-path@pdmartins`, install
+  `rules-by-trigger@pdmartins`, rename every `.claude/rules-by-path/` folder to
+  `.claude/rules-by-trigger/`, and replace the old deny entries with the new
+  ones.
+  - The plugin, its skills (`/rules-by-trigger:manage`, `:doctor`, `:improve`,
+    `:status`) and the CLI on the PATH (`rules-by-trigger`).
+  - The rule folders: `~/.claude/rules-by-trigger/` (global) and
+    `<root>/.claude/rules-by-trigger/` (project). A `.claude/rules-by-path/`
+    folder is no longer read.
+  - The recommended deny entries: `Read(**/.claude/rules-by-trigger/**)`,
+    `Edit(**/.claude/rules-by-trigger/**)`, `Read(~/.claude/rules-by-trigger/**)`
+    and `Edit(~/.claude/rules-by-trigger/**)`.
+  - The environment variable: `RULES_BY_TRIGGER_REMEMBER_AGAIN_AFTER`.
+  - What the model sees: the `<rules-by-trigger>` tags around injected rules and
+    the `[rules-by-trigger (rbt)]` prefix of the session notice.
 - `enforce: deny` is now **`block: true`**, and the `enforce` admin subcommand
   is now `block`. The old spelling said the same thing twice and borrowed
   `deny` from the permissions vocabulary it is only one implementation of.
@@ -52,6 +74,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
   tidying step must not do.
 - `validate` points the old spelling out, and its block-related notes now name
   `block --sync` as the way to bridge a project rule to a native deny.
+
+### Removed
+
+- **Breaking:** `RULES_BY_PATH_REMEMBER_AFTER`, the name the repeat-interval
+  environment variable carried until 0.4.0, is no longer read. The rename
+  already retires the name it was an alias of; honouring the older spelling
+  while the newer one stops working would make no sense.
 
 ## 0.6.0 — 2026-09-04
 

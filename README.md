@@ -1,4 +1,4 @@
-# rules-by-path
+# rules-by-trigger
 
 **Path-scoped rules for Claude Code.** Markdown rules are injected into
 context automatically — by a `PreToolUse` hook — the moment Claude touches a
@@ -14,7 +14,7 @@ session, whether or not the work touches that part of the tree. Scattering
 nested `CLAUDE.md` files through subfolders sort of works, but pollutes the
 repo, and the guidance still isn't tied to what the agent actually touches.
 
-`rules-by-path` inverts this:
+`rules-by-trigger` inverts this:
 
 - A rule is one markdown file that declares the glob it applies to, in its own
   frontmatter. There is no index to keep in sync.
@@ -23,11 +23,11 @@ repo, and the guidance still isn't tied to what the agent actually touches.
   context (`additionalContext`) — the body, and nothing else:
 
   ```
-  <rules-by-path>
+  <rules-by-trigger>
   Every endpoint must validate its input.
   ---
   Never log the request body.
-  </rules-by-path>
+  </rules-by-trigger>
   ```
 
 - Injection happens **once per rule version per session**, then the rule is
@@ -83,7 +83,7 @@ write*).
 
 On global scope specifically, the honest claim is narrower than "better":
 it is that this plugin's global rules are **consistently trusted** — every
-rule in `~/.claude/rules-by-path/` is treated as trusted input, uniformly.
+rule in `~/.claude/rules-by-trigger/` is treated as trusted input, uniformly.
 The native equivalent has had scope bugs of its own (e.g.
 anthropics/claude-code#17204), so "global scope done right" is a differentiator
 that can narrow, or disappear outright, as the native implementation matures —
@@ -105,11 +105,11 @@ nothing about whether your check is the right one.
 In Claude Code:
 
 ```
-/plugin marketplace add pdmartins/rules-by-path
-/plugin install rules-by-path@pdmartins
+/plugin marketplace add pdmartins/rules-by-trigger
+/plugin install rules-by-trigger@pdmartins
 ```
 
-Then run `/rules-by-path:doctor` once — it checks prerequisites, smoke-tests
+Then run `/rules-by-trigger:doctor` once — it checks prerequisites, smoke-tests
 the hook, and offers the recommended permission hardening (`doctor --fix`).
 
 **Requirements:** Python 3.8+ on `PATH` as `python3`, `python` or (Windows)
@@ -123,10 +123,10 @@ Just ask Claude, in any language:
 > "Add a rule for `src/api`: every endpoint needs input validation and must
 > return ProblemDetails on errors."
 
-The `rules-by-path:manage` skill writes one file:
+The `rules-by-trigger:manage` skill writes one file:
 
 ```
-.claude/rules-by-path/
+.claude/rules-by-trigger/
 └── CONV_api-returns-problemdetails.md
 ```
 
@@ -172,10 +172,10 @@ docs/"*, *"update the terraform rule"*.
 
 | Scope | Location | Globs match |
 |---|---|---|
-| **Project** | `<project-root>/.claude/rules-by-path/` | paths relative to the project root |
-| **Global** | `~/.claude/rules-by-path/` | absolute paths |
+| **Project** | `<project-root>/.claude/rules-by-trigger/` | paths relative to the project root |
+| **Global** | `~/.claude/rules-by-trigger/` | absolute paths |
 
-Nested projects work: every `.claude/rules-by-path/` above a touched file
+Nested projects work: every `.claude/rules-by-trigger/` above a touched file
 applies, all the way up to the filesystem root. The walk does not stop at a
 repository boundary, so a git submodule receives its parent repository's rules.
 Your global rules are budgeted first, so rules arriving with a cloned repo can
@@ -225,10 +225,10 @@ every path, and one that cancels every glob the rule declares.
 `which` explains the outcome for a concrete path:
 
 ```
-$ rules-by-path which --root . --path 'src/api/users.test.ts'
+$ rules-by-trigger which --root . --path 'src/api/users.test.ts'
 excluded: rule CONV_tsdoc.md — 'src/**' covers this path, exclude: 'src/**/*.test.ts' takes it back
 
-$ rules-by-path which --root . --path 'src/api/users.ts' --tool read
+$ rules-by-trigger which --root . --path 'src/api/users.ts' --tool read
 filtered: rule CONV_tsdoc.md — 'src/**' covers this path, but the rule is tool: write only
 ```
 
@@ -243,7 +243,7 @@ transcript — the count the API itself billed. That is the honest unit: a sessi
 that reads three huge files burns 200k tokens in three tool calls, while one
 doing fifty tiny greps burns 20k in fifty. Where the transcript cannot be read,
 the hook falls back to counting file-tool calls (default 25) and says so in
-`/rules-by-path:status`. There is no conversion between the two units.
+`/rules-by-trigger:status`. There is no conversion between the two units.
 
 There is no short form of a repeat: with no header in the emitted text, there is
 no way to mark a fragment as one, so the whole body is resent. **A short rule is
@@ -254,7 +254,7 @@ rule governing a folder nobody opens again is never repeated, however long the
 session runs.
 
 The default comes from the rule's type, then from `config.json` (see below);
-`RULES_BY_PATH_REMEMBER_AGAIN_AFTER` overrides it for one session, and
+`RULES_BY_TRIGGER_REMEMBER_AGAIN_AFTER` overrides it for one session, and
 `remember_again_after:` in a rule's own frontmatter overrides everything —
 tokens (`30k`, `1M`), calls (`25 calls`), or `never`:
 
@@ -280,7 +280,7 @@ wider glob, with the narrower glob to use. A rule whose command ran but whose
 text has never been delivered still counts as never injected — a command
 running says nothing about the guidance beside it.
 
-The `rules-by-path:improve` skill turns that, plus the validator's notes, into
+The `rules-by-trigger:improve` skill turns that, plus the validator's notes, into
 proposals — prune, narrow, split, reword — and harvests path-bound
 instructions out of `CLAUDE.md` files and native `.claude/rules/*.md` into
 rules that also fire on writes. Its second input, `digest --root <root>`,
@@ -299,8 +299,8 @@ overriding the one before it:
 | Layer | Where | Trusted |
 |---|---|---|
 | Plugin | `<plugin>/config.json` — the shipped default | yes |
-| User | `~/.claude/rules-by-path/config.json` | yes |
-| Project | `<project>/.claude/rules-by-path/config.json` | **no** |
+| User | `~/.claude/rules-by-trigger/config.json` | yes |
+| Project | `<project>/.claude/rules-by-trigger/config.json` | **no** |
 
 ```json
 {
@@ -315,7 +315,7 @@ overriding the one before it:
 }
 ```
 
-`rules-by-path config --root <root>` prints the effective result and names the
+`rules-by-trigger config --root <root>` prints the effective result and names the
 layer each value came from. `rule_types` is replaced whole by the nearest layer
 that declares it — merging two taxonomies by prefix would produce a hybrid
 nobody wrote; the other keys merge key by key.
@@ -399,7 +399,7 @@ anywhere). To target a `docs/` folder wherever it appears, use `**/docs/**`.
   directory link is matched on both the literal and the resolved path (the
   resolved one only while it stays inside the same project), so a monorepo
   alias neither loses a rule nor borrows one.
-- **Stays inside the scope**: `.claude/rules-by-path` must physically live
+- **Stays inside the scope**: `.claude/rules-by-trigger` must physically live
   inside the project it claims to belong to, rule files are opened without
   following symlinks and must be regular files, and rule names must be plain,
   bounded `*.md` names. A hostile repository cannot reach a private key,
@@ -411,7 +411,7 @@ anywhere). To target a `docs/` folder wherever it appears, use `**/docs/**`.
   permission bits and is not enforced on Windows.
 - **The outermost rules always apply**: your global scope is consulted first
   and the outermost project scope next, and both keep their slot when the
-  8-scope cap is reached. Nested `.claude/rules-by-path/` directories — which
+  8-scope cap is reached. Nested `.claude/rules-by-trigger/` directories — which
   anyone opening a PR can add — cannot crowd out the rules declared above them.
 - **No forgeable provenance, because none is emitted**: the injected text is the
   rule bodies between a pair of tags. Nothing states a rule's name, glob or
@@ -437,7 +437,7 @@ anywhere). To target a `docs/` folder wherever it appears, use `**/docs/**`.
 **Rule content is trusted input, at the same level as a repository's
 `CLAUDE.md`.** Project rules ride with the repo, so cloning a repository means
 trusting whatever instructions its rules contain, and you should review
-`.claude/rules-by-path/` in code review like any other instruction file. What
+`.claude/rules-by-trigger/` in code review like any other instruction file. What
 the plugin guarantees is narrower and mechanical: a rule can only ever inject
 *its own text*, it cannot read other files, impersonate a more trusted scope,
 or hang your session.
@@ -453,16 +453,16 @@ guarantees listed above, each covered by a regression test in
 
 ### Recommended hardening
 
-`/rules-by-path:doctor` offers deny-list entries for your
+`/rules-by-trigger:doctor` offers deny-list entries for your
 `~/.claude/settings.json` (`doctor --fix` writes them, after you agree):
 
 ```json
 "permissions": {
   "deny": [
-    "Read(**/.claude/rules-by-path/**)",
-    "Edit(**/.claude/rules-by-path/**)",
-    "Read(~/.claude/rules-by-path/**)",
-    "Edit(~/.claude/rules-by-path/**)"
+    "Read(**/.claude/rules-by-trigger/**)",
+    "Edit(**/.claude/rules-by-trigger/**)",
+    "Read(~/.claude/rules-by-trigger/**)",
+    "Edit(~/.claude/rules-by-trigger/**)"
   ]
 }
 ```
@@ -483,7 +483,7 @@ stating, and both were verified against Claude Code 2.1.233:
 With this, the *file tools* can no longer read or rewrite rule files, so rules
 reach context through the hook and changes go through the bundled CLI, which
 validates what it writes. Reading and updating a rule stay available through
-`rules-by-path show` and `rules-by-path update`.
+`rules-by-trigger show` and `rules-by-trigger update`.
 
 So that the deny-list is not something Claude discovers the hard way, a
 `SessionStart` hook says it once, up front: the rules directory is managed by
@@ -520,7 +520,7 @@ path — so `block: true` is exactly the native deny, with the rule's
 `Write`, `Edit`, `MultiEdit` and `NotebookEdit`; `Read` is never denied.
 
 **Trust gate: honoured from the GLOBAL scope only.** A project's
-`.claude/rules-by-path/` arrives with whatever repository is checked out —
+`.claude/rules-by-trigger/` arrives with whatever repository is checked out —
 exactly as untrusted as its `CLAUDE.md` — so a project rule that declares
 `block: true` is inert to the hook, silently, no matter how it is worded.
 There is no config, environment variable or project layer that widens this: it
@@ -528,8 +528,8 @@ is keyed to which scope actually matched, not to anything a repository could
 set. `validate` still points it out, with the way around it:
 
 ```bash
-"<plugin>/bin/rules-by-path" block --root <project-root> --list   # what would fire, and what it maps to
-"<plugin>/bin/rules-by-path" block --root <project-root> --sync   # write the native deny entries for real
+"<plugin>/bin/rules-by-trigger" block --root <project-root> --list   # what would fire, and what it maps to
+"<plugin>/bin/rules-by-trigger" block --root <project-root> --sync   # write the native deny entries for real
 ```
 
 `--sync` writes one `Edit(<glob>)` entry per glob into that project's own
@@ -618,7 +618,7 @@ sibling projects written in the same turn therefore interleave rather than
 arriving grouped.
 
 When everything passes, Claude is told nothing at all. The **user** gets one
-line per command instead — `rules-by-path: verified — <command> (rule
+line per command instead — `rules-by-trigger: verified — <command> (rule
 '<name>')` — because the check was theirs to ask for, and the model's context
 should not pay for good news.
 
@@ -643,7 +643,7 @@ ending with a failing check unreported is the one outcome worse than a slow
 turn.
 
 **Both scopes execute.** Unlike `block: true`, a `verify:` in a project's own
-`.claude/rules-by-path/` runs, with no gate. The two verbs answer different
+`.claude/rules-by-trigger/` runs, with no gate. The two verbs answer different
 questions: blocking is the plugin acting on the machine owner's behalf
 *against* the repository, an escalation nothing else in Claude Code grants a
 clone; running a command that arrived with a repository is what Claude Code
@@ -662,7 +662,7 @@ The honest limits:
   touch it can inject for. Nothing is verified for it.
 - **The command is trusted the way a project hook is.** Trusting a directory
   trusts its `verify:` commands in the same gesture. Review a clone's
-  `.claude/rules-by-path/` the way you review its `.claude/settings.json`.
+  `.claude/rules-by-trigger/` the way you review its `.claude/settings.json`.
 - **Still not a claim about correctness.** The plugin does not judge what your
   command asserts, only that it ran and that its failure reached Claude before
   the turn ended. A check that tests nothing passes.
@@ -682,28 +682,28 @@ The honest limits:
 
 ## Uninstalling
 
-`/plugin uninstall rules-by-path@pdmartins` removes the hook and the
+`/plugin uninstall rules-by-trigger@pdmartins` removes the hook and the
 skills. Three things outlive it. `doctor --uninstall` removes the first two —
 the deny-list entries above (otherwise those paths stay unreadable) and the
-cached state at `~/.claude/cache/rules-by-path` — and deliberately keeps the
-third, your authored rules in `~/.claude/rules-by-path/` and each project's
-`.claude/rules-by-path/`, listing them so you can decide.
+cached state at `~/.claude/cache/rules-by-trigger` — and deliberately keeps the
+third, your authored rules in `~/.claude/rules-by-trigger/` and each project's
+`.claude/rules-by-trigger/`, listing them so you can decide.
 
 ## Troubleshooting
 
-Two commands answer nearly everything; `/rules-by-path:status` and the
-`rules-by-path:doctor` skill run them for you:
+Two commands answer nearly everything; `/rules-by-trigger:status` and the
+`rules-by-trigger:doctor` skill run them for you:
 
 ```bash
 # both scopes, their findings, what covers a path, the config in force, usage
-"<plugin>/bin/rules-by-path" status --root <root> [--path <file>] [--json]
+"<plugin>/bin/rules-by-trigger" status --root <root> [--path <file>] [--json]
 # every setup check, each finding naming its fix; --fix applies the safe ones
-"<plugin>/bin/rules-by-path" doctor --root <root> [--fix]
+"<plugin>/bin/rules-by-trigger" doctor --root <root> [--fix]
 ```
 
 - **Rule not injecting?** Each rule version injects once per session. The
   state lives in `$CLAUDE_PLUGIN_DATA/state/` for a plugin install (falling
-  back to `~/.claude/cache/rules-by-path/`); delete `<state-dir>/<session_id>.json`
+  back to `~/.claude/cache/rules-by-trigger/`); delete `<state-dir>/<session_id>.json`
   to force re-injection. Check that a scope containing the rule is actually on
   the path from the touched file up to the filesystem root — the walk does not
   stop at a repository boundary, so this is rarely the cause — and that
@@ -725,19 +725,19 @@ of which is installed on a user's machine.
 ```
 .claude-plugin/marketplace.json   the marketplace (this repo is one)
 plugins/
-└── rules-by-path/                THE PLUGIN — this, and only this, is installed
+└── rules-by-trigger/                THE PLUGIN — this, and only this, is installed
     ├── .claude-plugin/plugin.json
     ├── hooks/                    PreToolUse injection, Stop verification, SessionStart
     ├── bin/                      launchers (POSIX + .cmd), on PATH when installed
     ├── scripts/                  the management CLI the skills drive
     ├── skills/                   manage, doctor, improve
-    └── commands/                 /rules-by-path:status
+    └── commands/                 /rules-by-trigger:status
 tests/                            development only
 publish.sh                        development only
 README.md  CHANGELOG.md  LICENSE
 ```
 
-If it is not under `plugins/rules-by-path/`, Claude Code never sees it.
+If it is not under `plugins/rules-by-trigger/`, Claude Code never sees it.
 
 ## Development
 
@@ -756,7 +756,7 @@ The mode also decides where the install comes from, and the script repoints the
 marketplace to match: a release installs from **GitHub** — exactly what it just
 published, exactly what a user gets — while `--local` installs from **this
 directory**, the only way to run code that is not released yet. The marketplace
-name never changes, so the install id stays `rules-by-path@pdmartins` either way
+name never changes, so the install id stays `rules-by-trigger@pdmartins` either way
 and the two can never both be installed.
 
 `bash publish.sh --minor` (or `--major` / `--revision`) is the release. It

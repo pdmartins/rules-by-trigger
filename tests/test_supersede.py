@@ -1,7 +1,7 @@
 """Unit and end-to-end tests for the supersede notice: what marks a fresh
 injection as replacing an earlier, now-stale copy of the same rule that an
-edit left behind in the transcript (rules_by_path.state.pop_superseded_entries
-and the wiring in rules_by_path.main / rules_by_path.context)."""
+edit left behind in the transcript (rules_by_trigger.state.pop_superseded_entries
+and the wiring in rules_by_trigger.main / rules_by_trigger.context)."""
 
 import os
 import sys

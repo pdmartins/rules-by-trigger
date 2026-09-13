@@ -1,17 +1,17 @@
 {
   "name": "pdmartins",
-  "description": "Pedro Martins' Claude Code plugins. Currently: rules-by-path, path-scoped markdown rules auto-injected into context by a PreToolUse hook.",
+  "description": "Pedro Martins' Claude Code plugins. Currently: rules-by-trigger, path-scoped markdown rules auto-injected into context by a PreToolUse hook.",
   "owner": {
     "name": "Pedro Martins",
     "url": "https://github.com/pdmartins"
   },
   "plugins": [
     {
-      "name": "rules-by-path",
-      "displayName": "Rules by Path",
+      "name": "rules-by-trigger",
+      "displayName": "Rules by Trigger",
       "description": "Path-scoped rules for Claude Code: markdown rules auto-injected into context the moment Claude touches a file matching a glob. A scalable replacement for nested CLAUDE.md files.",
       "version": "0.6.0",
-      "source": "./plugins/rules-by-path",
+      "source": "./plugins/rules-by-trigger",
       "author": {
         "name": "Pedro Martins",
         "url": "https://github.com/pdmartins"
@@ -26,8 +26,8 @@
         "context-engineering"
       ],
       "category": "workflow",
-      "homepage": "https://github.com/pdmartins/rules-by-path",
-      "repository": "https://github.com/pdmartins/rules-by-path"
+      "homepage": "https://github.com/pdmartins/rules-by-trigger",
+      "repository": "https://github.com/pdmartins/rules-by-trigger"
     }
   ]
 }

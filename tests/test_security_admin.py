@@ -34,8 +34,8 @@ class ScopeContainmentTest(util.SandboxTestCase):
         shutil.rmtree(os.path.join(self.proj, ".claude"))
         holder = os.path.join(self.tmp.name, "holder")
         os.makedirs(holder)
-        os.rename(self.victim, os.path.join(holder, "rules-by-path"))
-        self.victim = os.path.join(holder, "rules-by-path")
+        os.rename(self.victim, os.path.join(holder, "rules-by-trigger"))
+        self.victim = os.path.join(holder, "rules-by-trigger")
         os.symlink(holder, os.path.join(self.proj, ".claude"))
 
     @unittest.skipIf(os.name == "nt", "symlinks need privileges on Windows")

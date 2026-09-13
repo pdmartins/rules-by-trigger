@@ -1,4 +1,4 @@
-"""End-to-end tests for scripts/rules-by-path-admin.py (subprocess-level).
+"""End-to-end tests for scripts/rules-by-trigger-admin.py (subprocess-level).
 
 `migrate` has its own module, test_migrate.py."""
 

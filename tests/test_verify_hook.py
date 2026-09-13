@@ -107,7 +107,7 @@ class VerifyHookTest(util.SandboxTestCase):
         self.wrote("src/a.py")
         output = util.hook_output(self.verify())
         self.assertNotIn("decision", output, "a passing turn is not held open")
-        self.assertIn("rules-by-path: verified", output["systemMessage"])
+        self.assertIn("rules-by-trigger: verified", output["systemMessage"])
         self.assertIn("CONV_src.md", output["systemMessage"])
 
     def test_a_second_verification_with_no_new_write_says_nothing(self):
@@ -374,12 +374,12 @@ class WiringTest(unittest.TestCase):
         entries = self.hooks["Stop"]
         self.assertEqual(len(entries), 1)
         command = entries[0]["hooks"][0]
-        self.assertIn("bin/rules-by-path-verify", command["command"])
+        self.assertIn("bin/rules-by-trigger-verify", command["command"])
         self.assertEqual(command["timeout"], HOOK.VERIFY_HOOK_TIMEOUT_SECONDS,
                          "hooks.json mirrors the constant by hand")
 
     def test_both_launchers_ship_and_the_shell_one_is_executable(self):
-        launcher = os.path.join(util.PLUGIN_ROOT, "bin", "rules-by-path-verify")
+        launcher = os.path.join(util.PLUGIN_ROOT, "bin", "rules-by-trigger-verify")
         self.assertTrue(os.access(launcher, os.X_OK), launcher)
         self.assertTrue(os.path.isfile(launcher + ".cmd"))
 

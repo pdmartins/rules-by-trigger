@@ -1,4 +1,4 @@
-"""Unit and end-to-end tests for rules_by_path.state.detect_context_regression:
+"""Unit and end-to-end tests for rules_by_trigger.state.detect_context_regression:
 the fallback for when SessionStart(compact|clear)'s async --reset-session
 loses the race against the very next PreToolUse call, leaving `seen` pointing
 at a token high-water mark the context no longer holds."""

@@ -205,8 +205,8 @@ class ValidateVerifyTest(util.SandboxTestCase):
                       self.admin("validate", "--global").stdout)
 
     def test_an_inert_project_block_is_not_claimed_to_stop_the_write(self):
-        """A project `block:` never binds (see the ADR), so the verification
-        runs — saying otherwise would be a note that is simply false."""
+        """A project `block:` never binds, so the verification runs — saying
+        otherwise would be a note that is simply false."""
         self.rule(f"verify: {COMMAND}", "block: true")
         self.assertNotIn("pull against each other", self.validate().stdout)
 

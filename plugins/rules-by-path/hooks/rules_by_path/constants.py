@@ -34,7 +34,7 @@ TOOL_KIND_ANY = "any"
 TOOL_ANY_VALUES = (TOOL_KIND_ANY, "all")
 
 # `verify:` — the commands a rule declares, run at the end of a turn in which a
-# file the rule covers was written (see CONTEXT.md, "Verification").
+# file the rule covers was written.
 VERIFY_KEY = "verify"
 # A rule declares a check, not a build pipeline: past this many commands the
 # turn ends waiting on a queue nobody reads, so the extra ones are dropped with

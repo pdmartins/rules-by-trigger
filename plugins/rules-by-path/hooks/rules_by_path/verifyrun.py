@@ -109,9 +109,8 @@ def run_command(command, cwd, timeout=VERIFY_COMMAND_TIMEOUT_SECONDS):
 
     Through the system shell, because a shell command line is what a rule
     writes in `verify:` — `pytest -q && ruff check .` is one verification, not
-    two, and the spec (§3) says so. What that trusts is stated in the ADR: a
-    project's `verify:` runs, because a repository's own `.claude/settings.json`
-    hooks already do.
+    two. What that trusts: a project's `verify:` runs, because a repository's
+    own `.claude/settings.json` hooks already do.
 
     stdout and stderr arrive interleaved in one stream, in the order a human
     reading the terminal would have seen them; the bytes are decoded with

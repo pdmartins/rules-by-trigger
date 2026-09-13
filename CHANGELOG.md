@@ -27,8 +27,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
   of it only beside a failure it was already being shown. What
   reaches Claude is bounded: the last 60 lines a command printed, cut to 8,000
   characters, and the whole report capped at 24,000.
-  A project scope's `verify:` runs where its `block:` stays inert — why, in
-  `docs/adr/0001-project-verify-runs-block-stays-inert.md`.
+  A project scope's `verify:` runs where its `block:` stays inert: a
+  repository's own `.claude/settings.json` hooks already run commands, so a
+  project `verify:` opens no door that was not already open.
 - `improve` now weighs each rule by what it actually carries: whether Claude
   would have known it from the files it was going to read anyway. A rule
   stating something the model already knows buys adherence to your spelling of

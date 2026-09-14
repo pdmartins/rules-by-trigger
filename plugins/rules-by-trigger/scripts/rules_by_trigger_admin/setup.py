@@ -28,11 +28,12 @@ SETUP_LANGUAGE_FALLBACK = ("note: {language!r} ships no translation of the "
 SETUP_ACCEPTED = ("setup: wrote {path} (language={language}, hardening="
                   "{harden})")
 SETUP_DECLINED = "setup: declined — {path} written, settings untouched"
-CHECK_NOT_DONE = ("setup: not done — {path} does not exist. Ask the user the "
-                  "language (shipped translations: {shipped}) and whether to "
-                  "apply the recommended hardening, then run `doctor --setup "
-                  "--language <code> --harden|--no-harden`; if they decline "
-                  "the setup, `doctor --setup --decline`.")
+CHECK_NOT_DONE = "setup: not done — {path} does not exist"
+CHECK_NOT_DONE_HINT = ("ask the user the language (shipped translations: "
+                       "{shipped}) and whether to apply the recommended "
+                       "hardening, then `doctor --setup --language <code> "
+                       "--harden|--no-harden`; if they decline the setup, "
+                       "`doctor --setup --decline`")
 CHECK_DONE = "setup: done ({path})"
 # -----------------------------------------------------------------------------
 
@@ -115,5 +116,5 @@ def check_setup():
     path = user_config_path()
     if is_set_up():
         return [finding(LEVEL_OK, CHECK_DONE.format(path=path))]
-    return [finding(LEVEL_WARN, CHECK_NOT_DONE.format(
-        path=path, shipped=", ".join(HOOK.SHIPPED_LANGUAGES)))]
+    hint = CHECK_NOT_DONE_HINT.format(shipped=", ".join(HOOK.SHIPPED_LANGUAGES))
+    return [finding(LEVEL_WARN, CHECK_NOT_DONE.format(path=path), hint)]

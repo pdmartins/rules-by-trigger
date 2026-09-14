@@ -43,6 +43,8 @@ class DoctorTest(util.SandboxTestCase):
         self.assertIn("WARN  hardening: 4 of 4 deny entries missing", proc.stdout)
         self.assertIn("ok    no pre-plugin manual installation", proc.stdout)
         self.assertIn("WARN  setup: not done", proc.stdout)
+        self.assertIn("does not exist — fix: ask the user the language", proc.stdout)
+        self.assertIn("1 finding(s) need a human.", proc.stdout)
         self.assertIn("finding(s) need `doctor --harden`, which edits "
                       "~/.claude/settings.json — ask the user first.", proc.stdout)
         self.assertFalse(os.path.exists(util.state_path(self.home, "rbt-doctor-probe")))
@@ -73,6 +75,8 @@ class DoctorTest(util.SandboxTestCase):
         self.assertIn("ok    project scope: 1 rule(s), current format", proc.stdout)
 
     def test_untyped_rule_needs_a_human(self):
+        # A set-up machine, so the setup finding is not a second manual one.
+        util.write_config(self.global_scope, {})
         util.write_rule(self.proj, "no-refunds.md", "src/**", "NO REFUNDS")
         proc = self.doctor()
         self.assertIn("WARN  project scope: no type prefix on no-refunds.md", proc.stdout)
@@ -80,6 +84,8 @@ class DoctorTest(util.SandboxTestCase):
         self.assertIn("1 finding(s) need a human.", proc.stdout)
 
     def test_fix_leaves_hardening_untouched_and_harden_writes_it(self):
+        # A set-up machine, so "nothing to fix." is reachable once hardened.
+        util.write_config(self.global_scope, {})
         self.write_settings({"permissions": {"deny": ["Read(**/.env)",
                                                       "Grep(**/.claude/rules-by-trigger/**)"]},
                              "model": "opus"})

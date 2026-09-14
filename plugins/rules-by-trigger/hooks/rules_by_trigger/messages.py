@@ -61,6 +61,12 @@ VERIFY_NOT_RUN_KEY = "VERIFY_NOT_RUN"
 VERIFY_SYSTEM_MESSAGE_KEY = "VERIFY_SYSTEM_MESSAGE"
 VERIFY_SYSTEM_NOT_RUN_KEY = "VERIFY_SYSTEM_NOT_RUN"
 VERIFY_SYSTEM_RULE_WRITTEN_KEY = "VERIFY_SYSTEM_RULE_WRITTEN"
+# Told to the model by the admin CLI (not the hook) on every subcommand except
+# `doctor`, `show` and `status --json`, until the machine has a `~/.claude/rules-by-trigger/config.json` —
+# see `scripts/rules_by_trigger_admin/setup.py`. It lives in this table like
+# every other sentence the plugin emits, even though the hook itself never
+# reads it: this table is the one place translated text is allowed to live.
+SETUP_NOTICE_KEY = "SETUP_NOTICE"
 MESSAGE_KEYS = (LEGACY_NOTICE_KEY, SESSION_NOTICE_KEY, TRUNCATION_NOTICE_KEY,
                 SUPERSEDE_NOTICE_KEY, ENFORCE_DENY_REASON_TEMPLATE_KEY,
                 VERIFY_REPORT_HEADER_KEY, VERIFY_FAILURE_KEY,
@@ -69,7 +75,8 @@ MESSAGE_KEYS = (LEGACY_NOTICE_KEY, SESSION_NOTICE_KEY, TRUNCATION_NOTICE_KEY,
                 VERIFY_ERROR_KEY, VERIFY_NO_OUTPUT_KEY, VERIFY_PASSED_KEY,
                 VERIFY_REPORT_CUT_KEY, VERIFY_NOT_RUN_HEADER_KEY,
                 VERIFY_NOT_RUN_KEY, VERIFY_SYSTEM_MESSAGE_KEY,
-                VERIFY_SYSTEM_NOT_RUN_KEY, VERIFY_SYSTEM_RULE_WRITTEN_KEY)
+                VERIFY_SYSTEM_NOT_RUN_KEY, VERIFY_SYSTEM_RULE_WRITTEN_KEY,
+                SETUP_NOTICE_KEY)
 
 # Two spellings of the same separator, because a language code is written both
 # ways in the wild and nobody should have to guess which one this file wants.
@@ -121,6 +128,11 @@ MESSAGES = {
         VERIFY_SYSTEM_RULE_WRITTEN_KEY: (
             "rules-by-trigger: the verify: in rule {name!r} was written by this "
             "session, so it runs from the next one"
+        ),
+        SETUP_NOTICE_KEY: (
+            "rules-by-trigger is not set up on this machine yet "
+            "(~/.claude/rules-by-trigger/config.json does not exist). Offer the "
+            "user the setup through the rules-by-trigger:doctor skill."
         ),
     },
     BRAZILIAN_PORTUGUESE: {
@@ -189,6 +201,11 @@ MESSAGES = {
         VERIFY_SYSTEM_RULE_WRITTEN_KEY: (
             "rules-by-trigger: o verify: da regra {name!r} foi escrito por esta "
             "sessão, então ele passa a rodar a partir da próxima"
+        ),
+        SETUP_NOTICE_KEY: (
+            "O rules-by-trigger ainda não foi configurado nesta máquina "
+            "(~/.claude/rules-by-trigger/config.json não existe). Ofereça ao "
+            "usuário o setup pela skill rules-by-trigger:doctor."
         ),
     },
 }

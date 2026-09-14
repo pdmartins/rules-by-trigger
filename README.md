@@ -110,7 +110,7 @@ In Claude Code:
 ```
 
 Then run `/rules-by-trigger:doctor` once — it checks prerequisites, smoke-tests
-the hook, and offers the recommended permission hardening (`doctor --fix`).
+the hook, and offers the recommended permission hardening (`doctor --harden`).
 
 **Requirements:** Python 3.8+ on `PATH` as `python3`, `python` or (Windows)
 the `py` launcher. Standard library only — nothing to install. Tested on Linux
@@ -454,7 +454,7 @@ guarantees listed above, each covered by a regression test in
 ### Recommended hardening
 
 `/rules-by-trigger:doctor` offers deny-list entries for your
-`~/.claude/settings.json` (`doctor --fix` writes them, after you agree):
+`~/.claude/settings.json` (`doctor --harden` writes them, after you agree):
 
 ```json
 "permissions": {

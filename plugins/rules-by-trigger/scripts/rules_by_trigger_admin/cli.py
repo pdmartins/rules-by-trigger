@@ -14,6 +14,7 @@ from .migrate import cmd_migrate
 from .move import ANCHOR_CHOICES, cmd_move
 from .rules import (cmd_add, cmd_init, cmd_list, cmd_remove, cmd_show,
                     cmd_update)
+from .setup import is_set_up, setup_notice
 from .status import cmd_status
 from .validate import cmd_validate
 from .which import cmd_which
@@ -25,6 +26,13 @@ COMMANDS = {"init": cmd_init, "list": cmd_list, "show": cmd_show,
             "config": cmd_config, "migrate": cmd_migrate,
             "block": cmd_block, "status": cmd_status,
             "doctor": cmd_doctor, "move": cmd_move, "digest": cmd_digest}
+
+# Commands that never carry the setup notice. `doctor` is where the notice is
+# answered (`--setup`), so a reminder on top of it would be noise. `show`
+# prints a rule document that the documented `show -> edit -> update` round
+# trip feeds back into `update`: a line above its `---` would end up inside
+# the rule's body. `status --json` is exempt too, through `args.json`.
+SETUP_NOTICE_EXEMPT_COMMANDS = ("doctor", "show")
 
 # `block` answered to `enforce` until 0.7.0, alongside the frontmatter key of
 # the same name. Kept as an alias — and out of COMMANDS, so `--help` teaches
@@ -82,11 +90,30 @@ def main():
     parser.add_argument("--max-chars", dest="max_chars", type=int,
                         help="digest: overall size budget of the output")
     parser.add_argument("--fix", action="store_true",
-                        help="doctor: apply the deterministic fixes (migration, "
-                             "hardening) and re-check")
+                        help="doctor: apply the deterministic fixes (migration) "
+                             "and re-check")
     parser.add_argument("--uninstall", action="store_true",
                         help="doctor: remove the deny entries and cached state "
                              "the plugin left behind; rule directories are kept")
+    parser.add_argument("--setup", action="store_true",
+                        help="doctor: record this machine's setup consent in "
+                             "~/.claude/rules-by-trigger/config.json, then run "
+                             "the normal report; needs --language and "
+                             "--harden/--no-harden, or --decline")
+    parser.add_argument("--language",
+                        help="doctor --setup: language for rule bodies and the "
+                             "text the hook injects around them")
+    harden_group = parser.add_mutually_exclusive_group()
+    harden_group.add_argument("--harden", dest="harden", action="store_true",
+                              default=None,
+                              help="doctor: apply the recommended permission "
+                                   "hardening to ~/.claude/settings.json "
+                                   "(edits the user's own file — ask first)")
+    harden_group.add_argument("--no-harden", dest="harden", action="store_false",
+                              help="doctor --setup: skip the hardening")
+    parser.add_argument("--decline", action="store_true",
+                        help="doctor --setup: record the setup decision "
+                             "without hardening or a language")
     parser.add_argument("--list", action="store_true",
                         help="block: show block: true rules and their native "
                              "deny equivalents")
@@ -151,6 +178,40 @@ def main():
             fail("'block' requires --list or --sync")
         if args.list and args.sync:
             fail("'block' takes --list OR --sync, not both")
+    # `--setup` and its own sub-flags belong to `doctor` alone, the same way
+    # `--fix`/`--uninstall` do above.
+    if (args.setup or args.language is not None or args.decline) and args.command != "doctor":
+        fail(f"'{args.command}' takes no --setup/--language/--decline; they "
+             f"belong to `doctor`")
+    if args.harden is not None and args.command != "doctor":
+        fail(f"'{args.command}' takes no --harden/--no-harden; they belong to `doctor`")
+    if args.decline and not args.setup:
+        fail("'--decline' only means something with `doctor --setup`")
+    if args.language is not None and not args.setup:
+        fail("'--language' only means something with `doctor --setup`")
+    if args.harden is False and not args.setup:
+        fail("'--no-harden' only means something with `doctor --setup`")
+    if args.harden is not None and args.uninstall:
+        fail("'doctor' takes --harden/--no-harden OR --uninstall, not both")
+    if args.language is not None:
+        sanitized = HOOK.sanitize_language(args.language, "--language")
+        if sanitized is None:
+            fail(f"--language {args.language[:40]!r} is not usable — see stderr")
+        args.language = sanitized
+    if args.setup:
+        if args.fix or args.uninstall:
+            fail("'doctor --setup' takes no --fix/--uninstall")
+        if args.decline:
+            if args.language is not None or args.harden is not None:
+                fail("'doctor --setup --decline' takes no --language/--harden/"
+                     "--no-harden")
+        elif args.language is None or args.harden is None:
+            fail("'doctor --setup' requires --language and one of "
+                 "--harden/--no-harden (or --decline to skip both)")
+
+    if (args.command not in SETUP_NOTICE_EXEMPT_COMMANDS and not args.json
+            and not is_set_up()):
+        print(setup_notice())
 
     COMMANDS[args.command](args)
 

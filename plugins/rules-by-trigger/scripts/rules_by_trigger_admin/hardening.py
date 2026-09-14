@@ -7,7 +7,13 @@ only `Read(...)` and `Edit(...)` are consulted (Read governs greps too, Edit
 governs every editing tool; a `Grep(...)`/`Write(...)`/`MultiEdit(...)` entry
 matches nothing and makes Claude Code warn at startup), and a pattern that
 does not begin with `/` or `~/` resolves against the cwd, so the `~/`-anchored
-pair is what protects the global rules from inside a project outside $HOME."""
+pair is what protects the global rules from inside a project outside $HOME.
+A `//**/`-anchored entry (absolute from the filesystem root) is equivalent to
+BOTH canonical spellings of the same tool at once — it matches whatever
+`**/...` matches (any relative depth) and whatever `~/...` matches (the path
+under $HOME is still a path from `/`) — so a hand-written `Read(//**/...)` is
+recognised as already covering that tool's pair, rather than reported as
+missing and duplicated by `--harden`."""
 
 import json
 import os
@@ -26,6 +32,8 @@ HARDENING_DENY_ENTRIES = (
 # four above, or an obsolete spelling an older setup wrote.
 RULES_DIR_MARKER = ".claude/rules-by-trigger/"
 HONOURED_TOOLS = ("Read", "Edit")
+# The absolute-from-root anchor: see the module docstring's equivalence note.
+ABSOLUTE_ROOT_PREFIX = "//**/"
 
 
 def user_settings_path():
@@ -45,14 +53,25 @@ def is_obsolete(entry):
     return tool not in HONOURED_TOOLS
 
 
+def is_covered(entry, deny):
+    """Whether `entry`'s protection is already in force in `deny`: verbatim,
+    or via that tool's `//**/` absolute-root spelling, which — anchored at the
+    filesystem root — matches everything either canonical entry matches (see
+    the module docstring)."""
+    if entry in deny:
+        return True
+    tool = entry.split("(", 1)[0].strip()
+    return f"{tool}({ABSOLUTE_ROOT_PREFIX}{RULES_DIR_MARKER}**)" in deny
+
+
 def hardening_state():
     """What the user's settings currently say about the rules directories."""
     settings_path = user_settings_path()
     deny = existing_deny_entries(settings_path)
     return {
         "settings": settings_path,
-        "present": [entry for entry in HARDENING_DENY_ENTRIES if entry in deny],
-        "missing": [entry for entry in HARDENING_DENY_ENTRIES if entry not in deny],
+        "present": [entry for entry in HARDENING_DENY_ENTRIES if is_covered(entry, deny)],
+        "missing": [entry for entry in HARDENING_DENY_ENTRIES if not is_covered(entry, deny)],
         "obsolete": [entry for entry in deny if is_obsolete(entry)],
     }
 
@@ -78,7 +97,7 @@ def apply_hardening():
     deny = deny_list_of(data, settings_path)
     removed = [entry for entry in deny if is_obsolete(entry)]
     deny[:] = [entry for entry in deny if not is_obsolete(entry)]
-    added = [entry for entry in HARDENING_DENY_ENTRIES if entry not in deny]
+    added = [entry for entry in HARDENING_DENY_ENTRIES if not is_covered(entry, deny)]
     deny.extend(added)
     if added or removed:
         atomic_write(settings_path, json.dumps(data, indent=2) + "\n")

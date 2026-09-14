@@ -55,6 +55,25 @@ def warn(message):
     print(f"rules-by-trigger-admin: {message}", file=sys.stderr)
 
 
+# `doctor`'s report is one list of these, built by `doctor.py` and `setup.py`
+# alike — shared here, rather than importing one command module from the
+# other, so `setup.check_setup` needs no import of `doctor` at all.
+LEVEL_OK = "ok"
+LEVEL_INFO = "info"
+LEVEL_WARN = "WARN"
+LEVEL_ERROR = "ERROR"
+
+
+def finding(level, text, hint=None, action=None, hardens=False):
+    """One line of a `doctor` report. `action` is a callable `--fix` runs; a
+    hint without an action is advice for a human; `hardens=True` marks a
+    finding whose fix is `doctor --harden` instead of `--fix` — the hardening
+    edits the user's own settings, so it is never applied without being asked
+    for by name."""
+    return {"level": level, "text": text, "hint": hint, "action": action,
+            "hardens": hardens}
+
+
 def load_hook_module():
     """Import the plugin's hook and return it as a module."""
     import importlib.machinery

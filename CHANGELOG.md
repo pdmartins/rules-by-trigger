@@ -40,6 +40,19 @@ The plugin is renamed `rules-by-trigger`, and a rule can now declare a
   which the usage note and the session evidence can answer. A rule carrying an
   invariant enforced in another folder, or a gotcha whose reason is nowhere
   near the file, is the content that earns its place in context.
+- **A setup notice, on every CLI subcommand except `doctor`, `show` and
+  `status --json`, until `~/.claude/rules-by-trigger/config.json` exists.**
+  A machine that never ran the setup was silently getting every default with
+  no record anyone had agreed to it. `doctor --setup --language <code>
+  --harden|--no-harden` records the choice and runs the normal report;
+  `doctor --setup --decline` records that the user was asked and said no.
+  Either way the file is written, so the notice stops. `doctor --harden`
+  applies the recommended hardening on its own, outside `--setup`.
+- A hand-written `Read(//**/.claude/rules-by-trigger/**)` or
+  `Edit(//**/.claude/rules-by-trigger/**)` deny entry — absolute from the
+  filesystem root — is now recognised as already covering BOTH canonical
+  entries of that tool (`**/...` and `~/...`), so `doctor` no longer reports
+  it as missing nor `--harden` duplicates it.
 
 ### Changed
 
@@ -74,6 +87,11 @@ The plugin is renamed `rules-by-trigger`, and a rule can now declare a
   tidying step must not do.
 - `validate` points the old spelling out, and its block-related notes now name
   `block --sync` as the way to bridge a project rule to a native deny.
+- **Breaking:** `doctor --fix` no longer edits `~/.claude/settings.json`; it
+  applies only the deterministic fixes (migration). The hardening is consent
+  the machine owner gives once, not a default a re-run of `--fix` should be
+  able to slip back in — use `doctor --harden`, or `doctor --setup --harden`
+  on a first run, to apply it.
 
 ### Removed
 

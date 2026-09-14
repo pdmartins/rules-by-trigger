@@ -42,8 +42,9 @@ class DoctorTest(util.SandboxTestCase):
         self.assertIn("info  project scope: not created yet", proc.stdout)
         self.assertIn("WARN  hardening: 4 of 4 deny entries missing", proc.stdout)
         self.assertIn("ok    no pre-plugin manual installation", proc.stdout)
-        self.assertIn("can be applied with `doctor --fix`", proc.stdout)
-        self.assertIn("ask the user first", proc.stdout)
+        self.assertIn("WARN  setup: not done", proc.stdout)
+        self.assertIn("finding(s) need `doctor --harden`, which edits "
+                      "~/.claude/settings.json — ask the user first.", proc.stdout)
         self.assertFalse(os.path.exists(util.state_path(self.home, "rbt-doctor-probe")))
 
     def test_legacy_map_is_an_error_that_fix_migrates(self):
@@ -78,13 +79,21 @@ class DoctorTest(util.SandboxTestCase):
         self.assertIn("[manual]", proc.stdout)
         self.assertIn("1 finding(s) need a human.", proc.stdout)
 
-    def test_fix_writes_the_hardening_and_drops_obsolete_entries(self):
+    def test_fix_leaves_hardening_untouched_and_harden_writes_it(self):
         self.write_settings({"permissions": {"deny": ["Read(**/.env)",
                                                       "Grep(**/.claude/rules-by-trigger/**)"]},
                              "model": "opus"})
         proc = self.doctor()
         self.assertIn("obsolete deny entries", proc.stdout)
         proc = self.doctor("--fix")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        data = self.settings()
+        self.assertEqual(data["model"], "opus")
+        self.assertEqual(data["permissions"]["deny"],
+                         ["Read(**/.env)", "Grep(**/.claude/rules-by-trigger/**)"],
+                         "--fix no longer touches the hardening")
+        self.assertIn("WARN  hardening: obsolete deny entries", proc.stdout)
+        proc = self.doctor("--harden")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         data = self.settings()
         self.assertEqual(data["model"], "opus")

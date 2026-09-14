@@ -16,11 +16,16 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 "${CLAUDE_PLUGIN_ROOT}/bin/rules-by-trigger" doctor --root "$ROOT"
 ```
 
-- A finding marked `[--fix applies it]` is applied by re-running with
-  `--fix`. When the summary says the hardening edits the user's settings, ASK
-  first and state the trade-off in one line: with it, every rule read and
-  write goes through this CLI (the manage skill does that anyway); it
-  constrains the file tools, not subprocesses. Show what changed.
+- A finding marked `[--fix applies it]` is applied by re-running with `--fix`.
+- `setup: not done` — ask the language (options: the shipped translations
+  plus "other") and whether to apply the recommended hardening, then run
+  `doctor --setup --language <code> --harden|--no-harden`; if they decline
+  the setup itself, `doctor --setup --decline` instead.
+- A finding marked `[--harden applies it; ask the user first]` (inside or
+  outside `--setup`) edits the user's own settings: ASK first, stating the
+  trade-off in one line — every rule read and write then goes through this
+  CLI (the manage skill does that anyway); it constrains the file tools, not
+  subprocesses. Show what changed.
 - A finding marked `[manual]` needs a decision only the user can make (a
   rule's type, an unreadable file). Bring it to them with the command named.
   A type is asked with options built from what `config --root "$ROOT"` prints,

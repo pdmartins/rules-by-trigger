@@ -17,7 +17,7 @@ HOOK = util.load_hook_module()
 # it would not reach the reference `load_layer` actually calls. Taken out of
 # `sys.modules` rather than imported, because the package is only importable
 # once `load_hook_module` has put the hooks directory on the path.
-CONFIG = sys.modules["rules_by_path.config"]
+CONFIG = sys.modules["rules_by_trigger.config"]
 
 
 class ShippedDefaultTest(unittest.TestCase):
@@ -324,7 +324,7 @@ class HookUsesTheConfigTest(util.SandboxTestCase):
 
     def test_the_environment_variable_beats_every_layer(self):
         util.write_config(self.global_scope, {"remember_again_after": {"calls": "50 calls"}})
-        env = {"RULES_BY_PATH_REMEMBER_AGAIN_AFTER": "2 calls"}
+        env = {"RULES_BY_TRIGGER_REMEMBER_AGAIN_AFTER": "2 calls"}
         self.assertIsNotNone(self.inject(session="env", env=env))
         self.assertIsNone(self.inject(session="env", env=env))
         self.assertIsNotNone(self.inject(session="env", env=env))

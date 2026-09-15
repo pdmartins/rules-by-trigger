@@ -1,6 +1,6 @@
 """The re-injection budget: how many times ANY rule may be sent again in one
 session before it is silenced regardless of distance covered — the global
-ceiling under the per-type reinforcement defaults (see rules_by_path.reinject
+ceiling under the per-type reinforcement defaults (see rules_by_trigger.reinject
 and the ARCH/CONV/OTHR defaults in config.json)."""
 
 import os

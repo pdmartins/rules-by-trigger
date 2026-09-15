@@ -45,4 +45,4 @@ Espelhado na task list nativa da sessão (TaskList).
 ## Fora desta validação (herdado da auditoria de 19/08, P2)
 - lint de co-injeção de globs sobrepostos
 - telemetria de injeção com retenção própria + comando `audit`
-- `.pytest_cache/` criado dentro de `scripts/rules_by_path_admin/` (higiene)
+- `.pytest_cache/` criado dentro de `scripts/rules_by_trigger_admin/` (higiene)

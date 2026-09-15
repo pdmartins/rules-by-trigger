@@ -240,7 +240,7 @@ class MigrateAndEnforceTest(util.SandboxTestCase):
         util.write_rule(self.proj, "BUSN_a.md", "infra/**", BODY,
                         extra_frontmatter=["enforce: deny",
                                            "exclude: infra/README.md"])
-        proc = self.admin("enforce", "--root", self.proj, "--list")
+        proc = self.admin("block", "--root", self.proj, "--list")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("cannot express", proc.stdout)
 

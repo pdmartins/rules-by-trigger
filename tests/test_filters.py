@@ -185,8 +185,8 @@ class HookCombinedFiltersTest(util.SandboxTestCase):
         self.assertIsNone(self.touch(rel="docs/readme.md", tool="Write")[1])
 
 
-class HookEnforceInteractionTest(util.SandboxTestCase):
-    """`enforce: deny` answers to the filters like everything else — it acts on
+class HookBlockInteractionTest(util.SandboxTestCase):
+    """`block: true` answers to the filters like everything else — it acts on
     the rules that APPLY, and a filter decides which those are."""
 
     PROJECT_SUBDIRS = ("infra/prod",)
@@ -196,9 +196,9 @@ class HookEnforceInteractionTest(util.SandboxTestCase):
         project = self.proj.replace(os.sep, "/")
         util.write_rule(self.home, "BUSN_no-prod-writes.md",
                         f"{project}/infra/prod/**", "Never touch prod by hand.",
-                        extra_frontmatter=["enforce: deny", *extra])
+                        extra_frontmatter=["block: true", *extra])
 
-    def test_a_write_only_deny_still_denies(self):
+    def test_a_write_only_block_still_denies(self):
         self.write_global_rule("tool: write")
         hso = util.hook_specific_output(self.hook_for(tool="Write"))
         self.assertEqual(hso.get("permissionDecision"), "deny")
@@ -208,7 +208,7 @@ class HookEnforceInteractionTest(util.SandboxTestCase):
         hso = util.hook_specific_output(self.hook_for(tool="Write"))
         self.assertNotIn("permissionDecision", hso)
 
-    def test_an_excluded_path_is_not_denied(self):
+    def test_an_excluded_path_is_not_blocked(self):
         self.write_global_rule(f"exclude: {self.proj}/infra/prod/README.md")
         hso = util.hook_specific_output(self.hook_for(rel="infra/prod/README.md",
                                                       tool="Write"))

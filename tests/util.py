@@ -1,4 +1,4 @@
-"""Shared helpers for the rules-by-path test suite (stdlib only)."""
+"""Shared helpers for the rules-by-trigger test suite (stdlib only)."""
 
 import importlib.machinery
 import importlib.util
@@ -13,16 +13,16 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # The plugin is one directory of this repository — everything Claude Code
 # installs lives under PLUGIN_ROOT, and everything outside it (this suite,
 # publish.sh) is development scaffolding that never ships.
-PLUGIN_ROOT = os.path.join(REPO_ROOT, "plugins", "rules-by-path")
-HOOK_PATH = os.path.join(PLUGIN_ROOT, "hooks", "rules-by-path.py")
-ADMIN_PATH = os.path.join(PLUGIN_ROOT, "scripts", "rules-by-path-admin.py")
-RULES_DIR_RELPATH = os.path.join(".claude", "rules-by-path")
-STATE_DIR_RELPATH = os.path.join(".claude", "cache", "rules-by-path")
+PLUGIN_ROOT = os.path.join(REPO_ROOT, "plugins", "rules-by-trigger")
+HOOK_PATH = os.path.join(PLUGIN_ROOT, "hooks", "rules-by-trigger.py")
+ADMIN_PATH = os.path.join(PLUGIN_ROOT, "scripts", "rules-by-trigger-admin.py")
+RULES_DIR_RELPATH = os.path.join(".claude", "rules-by-trigger")
+STATE_DIR_RELPATH = os.path.join(".claude", "cache", "rules-by-trigger")
 
 
 def load_hook_module():
-    loader = importlib.machinery.SourceFileLoader("rules_by_path_hook_under_test", HOOK_PATH)
-    spec = importlib.util.spec_from_loader("rules_by_path_hook_under_test", loader)
+    loader = importlib.machinery.SourceFileLoader("rules_by_trigger_hook_under_test", HOOK_PATH)
+    spec = importlib.util.spec_from_loader("rules_by_trigger_hook_under_test", loader)
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
     return module
@@ -37,7 +37,7 @@ def isolated_env(fake_home, extra=None):
     env.pop("HOMEPATH", None)
     env.pop("HOMEDRIVE", None)
     env.pop("CLAUDE_PLUGIN_DATA", None)
-    env.pop("RULES_BY_PATH_REINFORCE_EVERY", None)
+    env.pop("RULES_BY_TRIGGER_REINFORCE_EVERY", None)
     if extra:
         env.update(extra)
     return env

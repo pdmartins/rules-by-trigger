@@ -1,7 +1,7 @@
 """The `language` setting: what a config layer may say, what that selects, and
 the one thing it can never do — put its own words into the text the hook
-injects around the rules (rules_by_path.messages, the wiring in
-rules_by_path.config / context / main)."""
+injects around the rules (rules_by_trigger.messages, the wiring in
+rules_by_trigger.config / context / main)."""
 
 import contextlib
 import io
@@ -290,7 +290,7 @@ class InjectionTest(util.SandboxTestCase):
         util.write_config(self.scope, {"language": FORGED_LANGUAGE})
         proc = self.hook_for(tool="Write", session="deny")
         reason = util.hook_specific_output(proc).get("permissionDecisionReason")
-        self.assertEqual(reason, HOOK.ENFORCE_DENY_REASON_TEMPLATE.format(
+        self.assertEqual(reason, HOOK.BLOCK_REASON_TEMPLATE.format(
             name="BUSN_locked.md", body="Never touch this file."))
 
     def test_the_project_layer_does_not_choose_the_deny_reason_language(self):
@@ -305,7 +305,7 @@ class InjectionTest(util.SandboxTestCase):
         util.write_config(self.scope, {"language": "pt-BR"})
         proc = self.hook_for(tool="Write", session="deny-owner")
         reason = util.hook_specific_output(proc).get("permissionDecisionReason")
-        self.assertEqual(reason, HOOK.ENFORCE_DENY_REASON_TEMPLATE.format(
+        self.assertEqual(reason, HOOK.BLOCK_REASON_TEMPLATE.format(
             name="BUSN_locked.md", body="Never touch this file."))
 
     def test_the_global_layer_chooses_the_deny_reason_language(self):

@@ -1,4 +1,4 @@
-"""Unit tests for the pure functions of hooks/rules-by-path.py: glob matching,
+"""Unit tests for the pure functions of hooks/rules-by-trigger.py: glob matching,
 rule-name derivation and frontmatter parsing. No subprocess, no sandbox."""
 
 import contextlib

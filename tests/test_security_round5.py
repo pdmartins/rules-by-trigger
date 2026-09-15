@@ -104,8 +104,8 @@ class FifthRoundTest(util.SandboxTestCase):
         plugin = os.path.join(self.tmp.name, "plugin")
         os.makedirs(os.path.join(plugin, "bin"))
         os.makedirs(os.path.join(plugin, "hooks"))  # deliberately empty: no .py
-        launcher = os.path.join(plugin, "bin", "rules-by-path-hook")
-        shutil.copy(os.path.join(util.PLUGIN_ROOT, "bin", "rules-by-path-hook"), launcher)
+        launcher = os.path.join(plugin, "bin", "rules-by-trigger-hook")
+        shutil.copy(os.path.join(util.PLUGIN_ROOT, "bin", "rules-by-trigger-hook"), launcher)
         proc = subprocess.run(["/bin/sh", launcher], input="{}",
                               capture_output=True, text=True, timeout=30)
         self.assertEqual(proc.returncode, 0, proc.stderr)

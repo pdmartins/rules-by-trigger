@@ -91,6 +91,40 @@ class MigrateToTypedNamesTest(util.SandboxTestCase):
         self.assertIn("remember_again_after: 40k", content)
         self.assertNotIn("\nremember_after:", content)
 
+    def test_the_pre_0_7_0_block_key_is_rewritten(self):
+        util.write_rule(self.proj, "OTHR_src.md", "src/**", "Rule text.",
+                        extra_frontmatter=["enforce: deny"])
+        self.admin("migrate", "--root", self.proj)
+        content = self.read_rule("OTHR_src.md")
+        self.assertIn("block: true", content)
+        self.assertNotIn("\nenforce:", content)
+
+    def test_a_block_value_the_hook_never_understood_is_left_alone(self):
+        """Rewriting `enforce: warn` as a block would turn a setting that did
+        nothing into one that denies tool calls. `validate` reports it."""
+        util.write_rule(self.proj, "OTHR_src.md", "src/**", "Rule text.",
+                        extra_frontmatter=["enforce: warn"])
+        self.admin("migrate", "--root", self.proj)
+        content = self.read_rule("OTHR_src.md")
+        self.assertIn("enforce: warn", content)
+        self.assertNotIn("block:", content)
+
+    def test_a_rule_already_carrying_the_current_key_is_left_alone(self):
+        util.write_rule(self.proj, "OTHR_src.md", "src/**", "Rule text.",
+                        extra_frontmatter=["block: false", "enforce: deny"])
+        self.admin("migrate", "--root", self.proj)
+        content = self.read_rule("OTHR_src.md")
+        self.assertIn("block: false", content)
+
+    def test_both_renames_land_in_one_rewrite(self):
+        util.write_rule(self.proj, "OTHR_src.md", "src/**", "Rule text.",
+                        extra_frontmatter=["remember_after: 40k", "enforce: deny"])
+        proc = self.admin("migrate", "--root", self.proj)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        content = self.read_rule("OTHR_src.md")
+        self.assertIn("remember_again_after: 40k", content)
+        self.assertIn("block: true", content)
+
     def test_an_untyped_rule_is_reported_never_guessed(self):
         util.write_rule(self.proj, "hv-dotnet-stack.md", "**/*.cs", "Stack rules.")
         proc = self.admin("migrate", "--root", self.proj)

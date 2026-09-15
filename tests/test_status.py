@@ -20,7 +20,7 @@ class StatusTest(util.SandboxTestCase):
 
     def test_reports_scopes_that_do_not_exist_yet(self):
         out = self.status().stdout
-        self.assertIn("rules-by-path", out)
+        self.assertIn("rules-by-trigger", out)
         self.assertIn("hook:", out)
         self.assertIn("(present)", out)
         self.assertEqual(out.count("not created yet"), 2)
@@ -102,9 +102,9 @@ class StatusTest(util.SandboxTestCase):
 
     def test_environment_override_is_reported(self):
         proc = util.run_admin(["status", "--root", self.proj], self.home,
-                              env={"RULES_BY_PATH_REMEMBER_AGAIN_AFTER": "50k"})
+                              env={"RULES_BY_TRIGGER_REMEMBER_AGAIN_AFTER": "50k"})
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("repeat override: RULES_BY_PATH_REMEMBER_AGAIN_AFTER=50k",
+        self.assertIn("repeat override: RULES_BY_TRIGGER_REMEMBER_AGAIN_AFTER=50k",
                       proc.stdout)
 
 

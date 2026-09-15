@@ -74,7 +74,7 @@ class UsageStatusTest(util.SandboxTestCase):
 class NarrowingHelpersTest(unittest.TestCase):
     def setUp(self):
         sys.path.insert(0, os.path.join(util.PLUGIN_ROOT, "scripts"))
-        from rules_by_path_admin import usage
+        from rules_by_trigger_admin import usage
         self.usage = usage
 
     def test_glob_base_stops_at_the_first_metacharacter(self):

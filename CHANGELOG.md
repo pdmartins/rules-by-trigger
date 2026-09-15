@@ -5,6 +5,103 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
+## 0.7.0 — 2026-09-15
+
+The plugin is renamed `rules-by-trigger`, and a rule can now declare a
+`verify:` command that runs at the end of the turn.
+
+### Added
+
+- **`verify:` — a rule can now declare a command, and the hook runs it at the
+  end of a turn in which a file that rule covers was written.** A rule's text
+  buys adherence to a convention and says nothing about whether what came out
+  holds; this adds the check that does, selected by the same glob. A failure
+  holds the turn open and gives Claude the rule's name, the command, its exit
+  code and the last 60 lines it printed; a pass is one line to the user and
+  nothing to the model. Native hooks already run commands, but for every turn
+  of the session, with no glob to narrow them and no place for the reason the
+  check exists. `add` and `update` take `--verify '<command>'`, repeatable,
+  with `--verify none` to clear it; `list` and `status` show `verify: N cmds`
+  beside the rule, and `status` counts `verified N, failed M`. A `verify:`
+  that Claude writes into a rule file itself waits for the next session, as a
+  hook added to `settings.json` does, so a rule the model just wrote cannot
+  hand it a shell in the same turn — adding one through the CLI is immediate.
+  A command the turn's budget never let start, or one the environment refused
+  to launch, does not hold the turn open and is not counted as a verification
+  of the rule that asked for it — the user gets one line each, and Claude hears
+  of it only beside a failure it was already being shown. What
+  reaches Claude is bounded: the last 60 lines a command printed, cut to 8,000
+  characters, and the whole report capped at 24,000.
+  A project scope's `verify:` runs where its `block:` stays inert: a
+  repository's own `.claude/settings.json` hooks already run commands, so a
+  project `verify:` opens no door that was not already open.
+- `improve` now weighs each rule by what it actually carries: whether Claude
+  would have known it from the files it was going to read anyway. A rule
+  stating something the model already knows buys adherence to your spelling of
+  a convention and nothing else — worth keeping only where the agent deviates,
+  which the usage note and the session evidence can answer. A rule carrying an
+  invariant enforced in another folder, or a gotcha whose reason is nowhere
+  near the file, is the content that earns its place in context.
+- **A setup notice, on every CLI subcommand except `doctor`, `show` and
+  `status --json`, until `~/.claude/rules-by-trigger/config.json` exists.**
+  A machine that never ran the setup was silently getting every default with
+  no record anyone had agreed to it. `doctor --setup --language <code>
+  --harden|--no-harden` records the choice and runs the normal report;
+  `doctor --setup --decline` records that the user was asked and said no.
+  Either way the file is written, so the notice stops. `doctor --harden`
+  applies the recommended hardening on its own, outside `--setup`.
+- A hand-written `Read(//**/.claude/rules-by-trigger/**)` or
+  `Edit(//**/.claude/rules-by-trigger/**)` deny entry — absolute from the
+  filesystem root — is now recognised as already covering BOTH canonical
+  entries of that tool (`**/...` and `~/...`), so `doctor` no longer reports
+  it as missing nor `--harden` duplicates it.
+
+### Changed
+
+- **Breaking:** the plugin is now `rules-by-trigger`. It already does more
+  than inject a rule when a path matches — it blocks writes and verifies at the
+  end of a turn — and it is about to gain triggers that are not paths. There is
+  no compatibility period: everything that carried the old name moves. To
+  upgrade, uninstall `rules-by-path@pdmartins`, install
+  `rules-by-trigger@pdmartins`, rename every `.claude/rules-by-path/` folder to
+  `.claude/rules-by-trigger/`, and replace the old deny entries with the new
+  ones.
+  - The plugin, its skills (`/rules-by-trigger:manage`, `:doctor`, `:improve`,
+    `:status`) and the CLI on the PATH (`rules-by-trigger`).
+  - The rule folders: `~/.claude/rules-by-trigger/` (global) and
+    `<root>/.claude/rules-by-trigger/` (project). A `.claude/rules-by-path/`
+    folder is no longer read.
+  - The recommended deny entries: `Read(**/.claude/rules-by-trigger/**)`,
+    `Edit(**/.claude/rules-by-trigger/**)`, `Read(~/.claude/rules-by-trigger/**)`
+    and `Edit(~/.claude/rules-by-trigger/**)`.
+  - The environment variable: `RULES_BY_TRIGGER_REMEMBER_AGAIN_AFTER`.
+  - What the model sees: the `<rules-by-trigger>` tags around injected rules and
+    the `[rules-by-trigger (rbt)]` prefix of the session notice.
+- `enforce: deny` is now **`block: true`**, and the `enforce` admin subcommand
+  is now `block`. The old spelling said the same thing twice and borrowed
+  `deny` from the permissions vocabulary it is only one implementation of.
+- Both old names keep working. A rule still carrying `enforce: deny` is
+  honoured exactly as before — silently, the way `remember_after` has been
+  since 0.4.0 — and `migrate` rewrites it. `enforce` as a subcommand still
+  runs, with a warning naming `block`. A value the hook never understood
+  (`enforce: warn`) is left alone by `migrate` rather than rewritten: turning a
+  setting that did nothing into one that denies tool calls is the one thing a
+  tidying step must not do.
+- `validate` points the old spelling out, and its block-related notes now name
+  `block --sync` as the way to bridge a project rule to a native deny.
+- **Breaking:** `doctor --fix` no longer edits `~/.claude/settings.json`; it
+  applies only the deterministic fixes (migration). The hardening is consent
+  the machine owner gives once, not a default a re-run of `--fix` should be
+  able to slip back in — use `doctor --harden`, or `doctor --setup --harden`
+  on a first run, to apply it.
+
+### Removed
+
+- **Breaking:** `RULES_BY_PATH_REMEMBER_AFTER`, the name the repeat-interval
+  environment variable carried until 0.4.0, is no longer read. The rename
+  already retires the name it was an alias of; honouring the older spelling
+  while the newer one stops working would make no sense.
+
 ## 0.6.0 — 2026-09-04
 
 One deterministic command per job — `status`, `doctor`, `move`, `digest` — and
@@ -44,9 +141,11 @@ skills that shrink to what needs judgement.
   `references/` and is read on demand.
 - The three answers only the user has — a rule's type, an ambiguous scope, and
   the anchor of a glob going global — are asked as options to pick instead of
-  prose, and the type options are built from what `config` prints, so a
-  replaced taxonomy travels into the question. Splitting a paste asks for every
-  fragment's type in one round, and so does `doctor`'s untyped-rule finding.
+  prose, and the type options are built from what `config` prints — closest
+  purpose first, marked as the recommendation — so a replaced taxonomy travels
+  into the question and the obvious type costs a keystroke, not a decision.
+  Splitting a paste asks for every fragment's type in one round, and so does
+  `doctor`'s untyped-rule finding.
   More than four types, or nobody to answer (a `-p` run, a subagent), falls
   back to prose and to the CLI's own refusal.
 - **`publish.sh` refuses an empty `## Unreleased`, and renames it on the way

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
-# publish.sh — release rules-by-path, or just refresh this machine's install.
+# publish.sh — release rules-by-trigger, or just refresh this machine's install.
 #
 # VERSIONING POLICY. The version is MAJOR.MINOR.REVISION and it changes ONLY on
 # a release, i.e. only when develop is merged into main. Between releases the
@@ -38,7 +38,7 @@ set -euo pipefail
 
 # ─── user-visible text and settings ───────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
-TAG="rules-by-path"
+TAG="rules-by-trigger"
 RELEASE_BRANCH="main"
 DEV_BRANCH="develop"
 
@@ -74,7 +74,7 @@ cd "$REPO_DIR"
 # The repository root is the marketplace plus the development scaffolding; the
 # plugin itself is one directory below, and that directory is exactly what
 # `claude plugin install` copies.
-PLUGIN_DIR="$REPO_DIR/plugins/rules-by-path"
+PLUGIN_DIR="$REPO_DIR/plugins/rules-by-trigger"
 PLUGIN_JSON="$PLUGIN_DIR/.claude-plugin/plugin.json"
 MARKETPLACE_JSON="$REPO_DIR/.claude-plugin/marketplace.json"
 CHANGELOG_MD="$REPO_DIR/CHANGELOG.md"
@@ -98,9 +98,9 @@ REMOTE_SLUG=$(git -C "$REPO_DIR" remote get-url origin 2>/dev/null \
 # Because the name is the same either way, the install id stays the same too, so
 # the two can never coexist and the hook is never registered twice.
 current_marketplace_source() {
-  RBP_MARKETPLACE="$MARKETPLACE_NAME" python3 - <<'PYEOF'
+  RBT_MARKETPLACE="$MARKETPLACE_NAME" python3 - <<'PYEOF'
 import json, os
-name = os.environ["RBP_MARKETPLACE"]
+name = os.environ["RBT_MARKETPLACE"]
 try:
     with open(os.path.expanduser("~/.claude/settings.json")) as handle:
         data = json.load(handle)
@@ -135,7 +135,7 @@ ensure_marketplace() {  # $1 = "github:owner/repo" or "directory:/path"
 # and keep serving a stale cache.
 refresh_local_install() {  # $1 = source spec, as ensure_marketplace takes it
   info "Refreshing the local install of $INSTALL_ID from ${1%%:*} (${1#*:})..."
-  export RBP_INSTALL_ID="$INSTALL_ID"
+  export RBT_INSTALL_ID="$INSTALL_ID"
   # Uninstall first: the marketplace cannot be repointed underneath a live
   # install without leaving the registry pointing at a cache nobody owns.
   claude plugin uninstall "$INSTALL_ID" --scope user >/dev/null 2>&1 || true
@@ -152,7 +152,7 @@ try:
 except OSError:
     raise SystemExit
 for key, entries in (data.get("plugins") or {}).items():
-    if key == os.environ["RBP_INSTALL_ID"]:
+    if key == os.environ["RBT_INSTALL_ID"]:
         for entry in entries:
             if entry.get("scope") == "user":
                 print(entry.get("installPath", ""))
@@ -294,11 +294,11 @@ if ! $ASSUME_YES; then
 fi
 
 # ─── bump, commit, merge, push ────────────────────────────────────────────────
-RBP_NEW_VERSION="$NEW_VERSION" RBP_PLUGIN_NAME="$PLUGIN_NAME" python3 - <<PYEOF
+RBT_NEW_VERSION="$NEW_VERSION" RBT_PLUGIN_NAME="$PLUGIN_NAME" python3 - <<PYEOF
 import datetime, json, os, re
 
-version = os.environ["RBP_NEW_VERSION"]
-plugin_name = os.environ["RBP_PLUGIN_NAME"]
+version = os.environ["RBT_NEW_VERSION"]
+plugin_name = os.environ["RBT_PLUGIN_NAME"]
 
 def rewrite(path, mutate):
     with open(path, encoding="utf-8") as handle:

@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
+## 0.7.0 — 2026-09-15
+
 The plugin is renamed `rules-by-trigger`, and a rule can now declare a
 `verify:` command that runs at the end of the turn.
 

@@ -5,6 +5,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
+### Changed
+
+- The README's *Install* section now describes the first-run setup that 0.7.0
+  added: the language question, the hardening that `doctor` asks before
+  writing, where the answers are saved, and the one-line reminder the CLI
+  prints until then. The README said nothing about it, so that reminder was
+  the first a user heard of the setup.
+
+### Removed
+
+- The README's "vs. native path rules" section. Its claims did not all survive
+  a check against Claude Code 2.1.277: it cited anthropics/claude-code#17204 as
+  a user-scope bug, and that issue is about how rule frontmatter is parsed.
+  Its note on what a rule buys (convention adherence and token economy, not
+  task correctness) moved to *Why*.
+
 ## 0.7.0 — 2026-09-15
 
 The plugin is renamed `rules-by-trigger`, and a rule can now declare a

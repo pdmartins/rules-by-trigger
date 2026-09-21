@@ -42,15 +42,16 @@ class LegacyNoticeTest(util.SandboxTestCase):
         util.write_file(os.path.join(self.scope, "rules-map.yml"), LEGACY_MAP)
 
     def test_the_notice_records_a_seen_entry_shaped_like_every_other(self):
-        """Every other writer of `seen` stores three slots (call number, context
-        tokens, reinjections spent). The notice stored two, and only survived
-        the next read because `coerce_seen_entry` repairs short entries — a
-        tolerance meant for state written by OLDER versions, not for state this
-        version writes."""
+        """Every other writer of `injected_rules` stores three slots (call
+        number, context tokens, reinjections spent). The notice stored two,
+        and only survived the next read because `coerce_seen_entry` repairs
+        short entries — a tolerance meant for state written by OLDER
+        versions, not for state this version writes."""
         self.write_legacy_map()
         self.assertIsNotNone(self.inject(session="legacy"))
-        seen = util.read_state(self.home, "legacy")["seen"]
-        entries = [value for key, value in seen.items() if key.startswith("legacy::")]
+        injected_rules = util.read_state(self.home, "legacy")["injected_rules"]
+        entries = [value for key, value in injected_rules.items()
+                  if key.startswith("legacy::")]
         self.assertTrue(entries, "the notice must record that it was told")
         for entry in entries:
             self.assertEqual(len(entry), 3, f"malformed seen entry: {entry}")

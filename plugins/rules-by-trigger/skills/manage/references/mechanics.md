@@ -10,14 +10,19 @@ or `config.json`.
 - What reaches the model is the rule bodies and nothing else — an opening tag,
   the bodies separated by a `---` line, a closing tag. No preamble, no rule
   name, no glob, no scope: nothing about a rule's origin is emitted.
-- A rule is injected **once per session**, then **sent again, whole**, once the
-  context has moved on by `remember_again_after` — and only when the rule's glob
+- A rule is injected **once per session** in the main conversation, and once in
+  each subagent, which starts from an empty context of its own; then it is
+  **sent again, whole**, once the context has moved on by `remember_again_after` — and only when the rule's glob
   matches again, so a rule for a folder nobody reopens is never repeated.
   The value takes tokens (`30k`, `1M`), calls (`25 calls`), or `never`. Each
   rule type carries its own default, which `add` writes into the rule; the
   session-wide default lives in `config.json` and `rules-by-trigger config` prints
   it. `remember_again_after:` in a rule's frontmatter overrides everything, and
   `RULES_BY_TRIGGER_REMEMBER_AGAIN_AFTER` overrides it for one session.
+- The record of what each context already received keeps at most 512 entries,
+  oldest out first. A rule whose entry drops out is injected once more the next
+  time its glob matches: a duplicate, never a rule withheld. Only a session
+  that runs many subagents gets near the cap.
 - There is no short form of a repeat: with no header there is no way to mark a
   fragment as one, so the whole body is resent. **A short rule is therefore a
   cheap rule** — this is the practical reason to keep one constraint per file.
@@ -25,6 +30,13 @@ or `config.json`.
   content.
 - Bash access (`cat`, `sed -i`) does NOT trigger injection; only the five file
   tools do.
+- The user sees one terminal line per tool call that injected a rule, naming
+  every rule it injected (marking repeats, new versions and subagent calls).
+  It rides on `systemMessage`, which Claude Code shows to the user, and adds
+  nothing to `additionalContext`, the text the hook injects for the model.
+  `"show_injections": false` in the GLOBAL config turns it off; a project
+  config cannot (a repository whose rules get injected must not be able to
+  hide that from the user).
 - Scopes: every `.claude/rules-by-trigger/` from the touched file's directory up to
   the filesystem root, plus `~/.claude/rules-by-trigger/`. The walk does not stop
   at a repository boundary, so a git submodule receives its parent repository's

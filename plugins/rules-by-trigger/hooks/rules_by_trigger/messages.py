@@ -33,6 +33,16 @@ from .constants import (ADMIN_COMMAND, BRAZILIAN_PORTUGUESE, DEFAULT_LANGUAGE,
                         SESSION_NOTICE, SUPERSEDE_NOTICE, TRUNCATION_NOTICES,
                         warn)
 
+# --- user-visible: the injection notice's colour ----------------------------
+# The terminal line `notice.py` builds for the user (see its own docstring).
+# Light text on dark blue, ANSI 256-colour SGR codes:
+# honoured by the harness even though it discards cursor-movement sequences.
+# Named constants rather than literals inside `notice.py`'s logic, kept next
+# to the translation table because both are the plugin's user-visible text.
+NOTICE_COLOUR = "\033[38;5;253;48;5;24m"
+NOTICE_COLOUR_RESET = "\033[0m"
+# ------------------------------------------------------------------------
+
 # The keys one row holds. They are the names the constants already carry, so a
 # caller reads `messages[SESSION_NOTICE_KEY]` where it used to read the
 # constant, and a translation missing one of them is a visible failure rather
@@ -67,6 +77,13 @@ VERIFY_SYSTEM_RULE_WRITTEN_KEY = "VERIFY_SYSTEM_RULE_WRITTEN"
 # every other sentence the plugin emits, even though the hook itself never
 # reads it: this table is the one place translated text is allowed to live.
 SETUP_NOTICE_KEY = "SETUP_NOTICE"
+# The labels of the injection notice `notice.py` builds for the user (the
+# `show_injections` key). The marker itself (NOTICE_MARKER, "rules-by-trigger:")
+# is not here — like HARNESS_MARKER, it is structure, not prose, and stays
+# byte-identical in every language.
+NOTICE_REPEAT_KEY = "NOTICE_REPEAT"
+NOTICE_NEW_VERSION_KEY = "NOTICE_NEW_VERSION"
+NOTICE_SUBAGENT_KEY = "NOTICE_SUBAGENT"
 MESSAGE_KEYS = (LEGACY_NOTICE_KEY, SESSION_NOTICE_KEY, TRUNCATION_NOTICE_KEY,
                 SUPERSEDE_NOTICE_KEY, ENFORCE_DENY_REASON_TEMPLATE_KEY,
                 VERIFY_REPORT_HEADER_KEY, VERIFY_FAILURE_KEY,
@@ -76,7 +93,8 @@ MESSAGE_KEYS = (LEGACY_NOTICE_KEY, SESSION_NOTICE_KEY, TRUNCATION_NOTICE_KEY,
                 VERIFY_REPORT_CUT_KEY, VERIFY_NOT_RUN_HEADER_KEY,
                 VERIFY_NOT_RUN_KEY, VERIFY_SYSTEM_MESSAGE_KEY,
                 VERIFY_SYSTEM_NOT_RUN_KEY, VERIFY_SYSTEM_RULE_WRITTEN_KEY,
-                SETUP_NOTICE_KEY)
+                SETUP_NOTICE_KEY, NOTICE_REPEAT_KEY, NOTICE_NEW_VERSION_KEY,
+                NOTICE_SUBAGENT_KEY)
 
 # Two spellings of the same separator, because a language code is written both
 # ways in the wild and nobody should have to guess which one this file wants.
@@ -134,6 +152,9 @@ MESSAGES = {
             "(~/.claude/rules-by-trigger/config.json does not exist). Offer the "
             "user the setup through the rules-by-trigger:doctor skill."
         ),
+        NOTICE_REPEAT_KEY: "(repeat)",
+        NOTICE_NEW_VERSION_KEY: "(new version)",
+        NOTICE_SUBAGENT_KEY: "(subagent)",
     },
     BRAZILIAN_PORTUGUESE: {
         LEGACY_NOTICE_KEY: (
@@ -207,6 +228,9 @@ MESSAGES = {
             "(~/.claude/rules-by-trigger/config.json não existe). Ofereça ao "
             "usuário o setup pela skill rules-by-trigger:doctor."
         ),
+        NOTICE_REPEAT_KEY: "(repetição)",
+        NOTICE_NEW_VERSION_KEY: "(nova versão)",
+        NOTICE_SUBAGENT_KEY: "(subagente)",
     },
 }
 SHIPPED_LANGUAGES = tuple(MESSAGES)

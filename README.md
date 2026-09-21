@@ -42,63 +42,12 @@ it can drive. One rule carries up to three verbs, all chosen by the same glob:
 write*), and **verify** — run the command it declares at the end of a turn in
 which one of those paths was written (*Verifying a write*).
 
-## vs. native path rules
-
-Claude Code already ships path-scoped guidance of its own, and this plugin
-does not replace it: a `paths:` rule under `.claude/rules/*.md`, or a nested
-`CLAUDE.md`, both load just-in-time the moment Claude *reads* a matching file,
-both reload after a compaction, and both have a user-wide counterpart —
-`~/.claude/rules/` — for guidance that should apply everywhere.
-
-Four gaps in that native behaviour are what this plugin is actually for:
-
-1. **It only triggers on `Read`.** A rule about a file never fires the first
-   time that file is *created* or edited without first being read — exactly
-   the moment a convention is most likely to be broken. This was requested
-   upstream and refused: anthropics/claude-code#38487 was closed not-planned.
-   The hook here watches all five file tools — `Read`, `Edit`, `Write`,
-   `MultiEdit`, `NotebookEdit` — so creation and editing trigger it too, and
-   `tool: write` narrows a rule to exactly those (see *Narrowing a rule
-   further*).
-2. **Nothing resends a rule once it fades.** A rule injected hundreds of
-   thousands of tokens ago has effectively left a long session's context;
-   nothing native repeats it. `remember_again_after` does.
-3. **No lint or audit surface.** `validate`, `which` and the admin CLI answer
-   "what would fire here", "which rules are dead weight", and let rules be
-   managed at scale from a script — none of which the native mechanism
-   exposes.
-4. **No policy tied to a human reason.** Native `permissions.deny` blocks
-   silently. A **global** rule with `block: true` blocks too, and shows the
-   rule's own text as *why* (see *Enforcing a rule* below) — the hook does not
-   validate the rule, only the path; the added value is a pedagogical reason
-   plus not having to hand-author a permission entry.
-
-The same argument extends past guidance to checks. Claude Code runs commands
-from hooks in `settings.json`, but a `Stop` or `PostToolUse` hook fires for
-every turn of the session whatever was touched, and there is no glob to say
-otherwise. `verify:` is that command selected by the same path mapping the
-plugin already has, working from either scope, with the rule text that explains
-*why* the check exists sitting next to it in the same file (see *Verifying a
-write*).
-
-On global scope specifically, the honest claim is narrower than "better":
-it is that this plugin's global rules are **consistently trusted** — every
-rule in `~/.claude/rules-by-trigger/` is treated as trusted input, uniformly.
-The native equivalent has had scope bugs of its own (e.g.
-anthropics/claude-code#17204), so "global scope done right" is a differentiator
-that can narrow, or disappear outright, as the native implementation matures —
-not something to lean on permanently.
-
-**What this buys you, stated plainly: convention adherence and token
-economy** — a rule reaches context exactly when its glob matches, and costs
-nothing when it does not. It is explicitly **not** a claim about task
+What this buys you is convention adherence and token economy, not task
 correctness: two 2026 ablation studies found that injecting a rule into
-context, on its own, moves correctness on the underlying task by close to
-nothing. Use this to keep an agent inside a team's conventions cheaply, not to
-make it solve harder problems. `verify:` does not change that claim either: it
-guarantees that the check *you* declared runs at the end of a turn that wrote a
-matching file, and that a failure comes back to Claude before the turn ends —
-nothing about whether your check is the right one.
+context, on its own, barely moves correctness on the underlying task. `verify:`
+does not change that: it guarantees that the check you declared runs, and that
+a failure reaches Claude before the turn ends, not that the check is the right
+one.
 
 ## Install
 
@@ -110,7 +59,13 @@ In Claude Code:
 ```
 
 Then run `/rules-by-trigger:doctor` once — it checks prerequisites, smoke-tests
-the hook, and offers the recommended permission hardening (`doctor --harden`).
+the hook, asks which language the plugin's messages should use, and offers the
+recommended permission hardening (`doctor --harden`), asking before it touches
+`~/.claude/settings.json`. Your answers are saved in
+`~/.claude/rules-by-trigger/config.json`. Until that file exists, every CLI
+command except `doctor`, `show` and `status --json` starts its output with a
+one-line reminder to run this setup; declining it saves an empty file, and the
+reminder stops.
 
 **Requirements:** Python 3.8+ on `PATH` as `python3`, `python` or (Windows)
 the `py` launcher. Standard library only — nothing to install. Tested on Linux
@@ -353,6 +308,20 @@ only your own layers choose the language it arrives in.
 Rule file names, type prefixes (`BUSN`, `ARCH`, …) and frontmatter keys are
 identifiers, not prose, and never translate.
 
+### `show_injections`
+
+Every tool call that injects a rule also prints one terminal line naming it —
+`rules-by-trigger: CONV_api.md`, with `(repeat)` or `(new version)` per rule
+and `(subagent)` when the call ran inside one. It is for the person watching
+the terminal: it travels on the hook's `systemMessage` field, which Claude
+Code shows to the user, and the text injected for the model
+(`additionalContext`) is the same with or without it.
+`show_injections: false` turns it off, but only from
+`~/.claude/rules-by-trigger/config.json`, the machine owner's own layer — a
+project cannot set it to `false` for itself, because a repository whose rules
+get injected must not be able to hide that from the user. A project MAY set
+it back to `true` over a global `false`.
+
 ## Glob semantics
 
 | Glob | Matches |
@@ -379,7 +348,7 @@ anywhere). To target a `docs/` folder wherever it appears, use `**/docs/**`.
 - **Never blocks work by accident**: any internal hook failure goes to stderr
   and the tool call proceeds untouched. The hook denies a tool call only
   through one deliberate, narrow path — a **global** rule with `block: true`
-  matching a write (see *Enforcing a rule* below) — never as a side effect of a
+  matching a write (see *Blocking a write* below) — never as a side effect of a
   failure. A failing `verify:` is not that path either: it holds the *turn*
   open at `Stop` and denies no tool call (see *Verifying a write*). The
   recommended hardening's own `permissions.deny` entries (see *Security model*)
@@ -701,8 +670,9 @@ Two commands answer nearly everything; `/rules-by-trigger:status` and the
 "<plugin>/bin/rules-by-trigger" doctor --root <root> [--fix]
 ```
 
-- **Rule not injecting?** Each rule version injects once per session. The
-  state lives in `$CLAUDE_PLUGIN_DATA/state/` for a plugin install (falling
+- **Rule not injecting?** Each rule version injects once in the main
+  conversation and once in each subagent, which starts from an empty context.
+  The state lives in `$CLAUDE_PLUGIN_DATA/state/` for a plugin install (falling
   back to `~/.claude/cache/rules-by-trigger/`); delete `<state-dir>/<session_id>.json`
   to force re-injection. Check that a scope containing the rule is actually on
   the path from the touched file up to the filesystem root — the walk does not

@@ -36,12 +36,12 @@ def coerce_written(value, cap=MAX_WRITTEN_PATHS):
     """The list of written paths from whatever is on disk, or [] when it is
     unusable.
 
-    Coerced entry by entry, the way `seen` is, and for the same reason: the
-    state file may have been hand-edited or half-written, and a number where a
-    path belongs would crash the glob matching at the end of the turn — after
-    the writes have happened, with nothing left to fail open into. What
-    survives is the non-empty strings, in the order the file had them, deduped
-    and capped.
+    Coerced entry by entry, the way `injected_rules` is, and for the same
+    reason: the state file may have been hand-edited or half-written, and a
+    number where a path belongs would crash the glob matching at the end of
+    the turn — after the writes have happened, with nothing left to fail open
+    into. What survives is the non-empty strings, in the order the file had
+    them, deduped and capped.
 
     `cap` is a parameter because the state holds two lists of paths with the
     same shape and different lifetimes — the turn's writes and the session's
@@ -76,15 +76,15 @@ def record_written(state, abs_path):
     without limit."""
     if not isinstance(abs_path, str) or not abs_path:
         return
-    written = state.get("written")
-    if not isinstance(written, list):
-        written = []
-        state["written"] = written
-    if abs_path in written:
+    unverified_writes = state.get("unverified_writes")
+    if not isinstance(unverified_writes, list):
+        unverified_writes = []
+        state["unverified_writes"] = unverified_writes
+    if abs_path in unverified_writes:
         return
-    written.append(abs_path)
-    if len(written) > MAX_WRITTEN_PATHS:
-        del written[:len(written) - MAX_WRITTEN_PATHS]
+    unverified_writes.append(abs_path)
+    if len(unverified_writes) > MAX_WRITTEN_PATHS:
+        del unverified_writes[:len(unverified_writes) - MAX_WRITTEN_PATHS]
         _warn_cap()
 
 
@@ -102,9 +102,9 @@ def record_rules_written(state, abs_path, real_abs):
     Both spellings are kept, the literal path the tool named and its resolved
     form, because the end of the turn compares a rule file it found by walking
     the scope, which may be reached through either. Deduped, insertion-ordered
-    and capped like `written`; unlike `written` it is not taken by a
-    verification and survives a state reset (see `reset_session`), because what
-    it answers is about the session and not about the turn."""
+    and capped like `unverified_writes`; unlike `unverified_writes` it is not
+    taken by a verification and survives a state reset (see `reset_session`),
+    because what it answers is about the session and not about the turn."""
     recorded = state.get("rules_written")
     if not isinstance(recorded, list):
         recorded = []
@@ -133,6 +133,6 @@ def take_written(state):
     so the verification that consumed it must not be handed the same paths
     again. That is what ends a turn whose checks have already run, instead of
     verifying the same writes for as long as the turn stays open."""
-    written = coerce_written(state.get("written"))
-    state["written"] = []
-    return written
+    unverified_writes = coerce_written(state.get("unverified_writes"))
+    state["unverified_writes"] = []
+    return unverified_writes

@@ -36,9 +36,10 @@ What reaches the model is the rule bodies and nothing else:
 Design constraints:
 - Never blocks the tool call: any internal failure goes to stderr and the hook
   exits 0 with no stdout.
-- Each rule *version* is injected at most once per session (the dedup key
-  includes a hash of the content, so editing a rule re-injects it), then
-  repeated in full once the context has moved on by `remember_again_after`.
+- Each rule *version* is injected at most once per context — the main
+  conversation, or one subagent (the dedup key includes a hash of the content,
+  so editing a rule re-injects it) — then repeated in full once the context has
+  moved on by `remember_again_after`.
 - Files inside `.claude/rules-by-trigger/` never trigger injection.
 - Rule content is untrusted input, and is not dressed up as anything more
   trustworthy than it is. The emitted text carries no provenance and no
@@ -67,7 +68,7 @@ Layout — one concern per module, none over 400 lines:
     rules.py        rule names, reading a rule file, indexing a scope
     matching.py     the touched path, and the rules it matches
     state.py        per-session dedup, context size, repeat scheduling
-    due.py          when a delivered rule is due again, and edit cleanup
+    due.py          the dedup key, when a rule is due again, edit cleanup
     written.py      the paths written since the last verification
     context.py      assembling the injected text, defanging forged framing
     verify.py       the Stop hook: which `verify:` commands a turn owes
@@ -81,7 +82,7 @@ exists because `hooks.json`, the `bin/` launchers, the admin and the tests all
 address the hook by that path.
 """
 
-from .constants import (ADMIN_COMMAND, BRAZILIAN_PORTUGUESE,
+from .constants import (ADMIN_COMMAND, AGENT_KEY_PREFIX, BRAZILIAN_PORTUGUESE,
                         CLAUDE_DIR_NAME, CONFIG_FILE_NAME, DEFAULT_LANGUAGE,
                         DEFAULT_REMEMBER_AGAIN_CALLS,
                         DEFAULT_REMEMBER_AGAIN_TOKENS,
@@ -95,7 +96,8 @@ from .constants import (ADMIN_COMMAND, BRAZILIAN_PORTUGUESE,
                         MAX_ANCESTOR_STEPS, MAX_CONFIG_BYTES,
                         MAX_CONFIGURABLE_REINJECT_BUDGET,
                         MAX_FRONTMATTER_BYTES, MAX_GLOB_CHARS,
-                        MAX_GLOBS_PER_RULE, MAX_LANGUAGE_CHARS,
+                        MAX_GLOBS_PER_RULE, MAX_INJECTED_RULES,
+                        MAX_LANGUAGE_CHARS,
                         MAX_REINJECTIONS_PER_RULE,
                         MAX_RULE_CHARS, MAX_RULE_NAME_CHARS, MAX_RULE_TYPES,
                         MAX_RULES_PER_SCOPE, MAX_RULES_WRITTEN, MAX_SCOPES,
@@ -110,7 +112,9 @@ from .constants import (ADMIN_COMMAND, BRAZILIAN_PORTUGUESE,
                         RULE_NAME_EXTRA_CHARS, RULE_SEPARATOR, RULE_WARN_CHARS,
                         RULES_CLOSE_TAG, RULES_DIR_RELPATH, RULES_OPEN_TAG,
                         MAX_STATS_DIRS_PER_RULE, MAX_STATS_RULES,
-                        SESSION_NOTICE, STATE_MAX_AGE_SECONDS, STATS_FILE_NAME,
+                        NOTICE_MARKER,
+                        SESSION_NOTICE, SHOW_INJECTIONS_KEY,
+                        STATE_MAX_AGE_SECONDS, STATS_FILE_NAME,
                         STATE_READ_CHUNK_BYTES, SUPERSEDE_NOTICE,
                         TOKEN_REGRESSION_SLACK, TOOL_ANY_VALUES, TOOL_KIND_ANY,
                         TOOL_KIND_READ, TOOL_KIND_WRITE, TOOL_KINDS,
@@ -125,7 +129,10 @@ from .constants import (ADMIN_COMMAND, BRAZILIAN_PORTUGUESE,
                         WRITE_TOOL_NAMES, warn)
 from .messages import (ENFORCE_DENY_REASON_TEMPLATE_KEY,
                        LANGUAGE_NORMAL_FORM, LEGACY_NOTICE_KEY,
-                       MESSAGE_KEYS, MESSAGES, SESSION_NOTICE_KEY,
+                       MESSAGE_KEYS, MESSAGES, NOTICE_COLOUR,
+                       NOTICE_COLOUR_RESET, NOTICE_NEW_VERSION_KEY,
+                       NOTICE_REPEAT_KEY, NOTICE_SUBAGENT_KEY,
+                       SESSION_NOTICE_KEY,
                        SETUP_NOTICE_KEY,
                        SHIPPED_LANGUAGES, SUPERSEDE_NOTICE_KEY,
                        TRUNCATION_NOTICE_KEY, VERIFY_ERROR_KEY,
@@ -151,6 +158,7 @@ from .config import (find_rule_type, language, load_config,
                      load_layer, max_rule_chars,
                      remember_again_after_default,
                      remember_again_after_for_type, rule_types, sanitize_config,
+                     sanitize_show_injections, show_injections,
                      type_prefixes, warn_rule_chars)
 from .reinject import reinject_budget, sanitize_reinject_budget
 from .globbing import (glob_matches, glob_matches_path, match_path,
@@ -166,11 +174,14 @@ from .state import (cleanup_stale_state, close_state,
                     coerce_seen_entry, context_size, detect_context_regression,
                     is_due, lock_exclusive, open_state, pop_superseded_entries,
                     save_state, state_dir, state_file_for)
+from .due import agent_key_prefix, rule_key_prefix, trim_injected_rules
 from .stats import (load_stats, matched_dir, record_injections,
                     record_verifications, rule_key, stats_path, update_stats)
 from .written import (coerce_written, record_rules_written, record_written,
                       take_written)
 from .context import build_context, defang, neutralize
+from .notice import (build_notice_line, build_pretooluse_output,
+                     notice_name, rule_blocks_of)
 from .verifyrun import (CommandResult, DID_NOT_RUN_STATUSES, STATUS_ERROR,
                         STATUS_FAILED, STATUS_NOT_STARTED, STATUS_OUT_OF_TIME,
                         STATUS_PASSED, STATUS_TIMED_OUT, not_started,

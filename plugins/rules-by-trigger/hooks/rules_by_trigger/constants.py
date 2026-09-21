@@ -79,6 +79,14 @@ MAX_WRITTEN_PATHS = 512
 # above: a session that writes more than this many rule files is not a session
 # this gate has to serve.
 MAX_RULES_WRITTEN = 64
+# How many rules (and the legacy-format notice) one session remembers having
+# injected, across every context: the main conversation and every subagent it
+# spawned. A key recorded inside a subagent carries an `agent::` prefix (see
+# `due.agent_key_prefix`), and nothing clears a finished subagent's entries on
+# its own — not until /clear, a compaction, or the 14-day stale sweep — while
+# the whole state file is rewritten on every single tool call. See
+# `due.trim_injected_rules` for what happens past this cap.
+MAX_INJECTED_RULES = 512
 # What the `Stop` hook gets from Claude Code before it is killed and its output
 # discarded. `hooks/hooks.json` mirrors this number by hand, because JSON cannot
 # import a constant — the test suite asserts the two still agree.
@@ -129,6 +137,10 @@ MAX_ANCESTOR_STEPS = 64
 # remaining rules are simply not consulted for this call.
 MATCH_BUDGET_SECONDS = 2.0
 STATE_MAX_AGE_SECONDS = 14 * 24 * 3600
+# Leads every `seen` key recorded inside a subagent, ahead of the scope
+# directory, so its deliveries never share a key with the main conversation's
+# or another subagent's (see `due.agent_key_prefix`).
+AGENT_KEY_PREFIX = "agent::"
 # Per-rule usage lives beside the session state, in one file that the stale
 # sweep never touches: it is the record that outlives sessions on purpose.
 # Every collection in it is capped so it stays a few KB however long it lives.
@@ -235,10 +247,21 @@ LANGUAGE_FORBIDDEN_CHARS = "\u115f\u1160\u3164\uffa0"
 DEFAULT_LANGUAGE = "en"
 BRAZILIAN_PORTUGUESE = "pt-BR"
 
+# Whether the user sees a terminal line naming the rules a tool call injected
+# (see notice.py). A `config.json` key like `language`, but trusted in only
+# one direction: a repository whose rules get injected must not be able to
+# hide from the user that they are, so only the user's OWN layer may turn it
+# off — a project layer may switch it back on, never off.
+SHOW_INJECTIONS_KEY = "show_injections"
+
 # How the harness labels this plugin's own output. A marker, not prose: every
 # translation of SESSION_NOTICE opens with these exact bytes, and rule content
 # is defanged from emitting them (see FORGED_FRAMING_TOKENS).
 HARNESS_MARKER = "[rules-by-trigger (rbt)]"
+
+# What every injection notice line opens with (see notice.py). A marker, not
+# prose, so it stays the same in every language — like HARNESS_MARKER above.
+NOTICE_MARKER = "rules-by-trigger:"
 
 LEGACY_NOTICE = (
     "This scope still uses the old rules-map.yml format, so NO rules are being "

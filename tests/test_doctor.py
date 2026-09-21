@@ -121,7 +121,7 @@ class DoctorTest(util.SandboxTestCase):
     def test_uninstall_removes_deny_entries_and_state_but_keeps_rules(self):
         self.write_settings({"permissions": {"deny": ["Read(**/.env)"] + HARDENING_ENTRIES}})
         util.write_rule(self.proj, "CONV_x.md", "src/**", "KEEP ME")
-        util.write_state(self.home, "s1", '{"calls": 1, "seen": {}}')
+        util.write_state(self.home, "s1", '{"calls": 1, "injected_rules": {}}')
         proc = self.doctor("--uninstall")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(self.settings()["permissions"]["deny"], ["Read(**/.env)"])

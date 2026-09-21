@@ -85,9 +85,9 @@ class StatusTest(util.SandboxTestCase):
 
     def test_repeat_unit_comes_from_the_newest_state_file(self):
         util.write_state(self.home, "old", json.dumps(
-            {"calls": 3, "seen": {"k": [1, None, 0]}}))
+            {"calls": 3, "injected_rules": {"k": [1, None, 0]}}))
         util.write_state(self.home, "new", json.dumps(
-            {"calls": 3, "seen": {"k": [1, 45000, 0]}}))
+            {"calls": 3, "injected_rules": {"k": [1, 45000, 0]}}))
         os.utime(util.state_path(self.home, "old"), (1, 1))
         out = self.status().stdout
         self.assertIn("measured in context tokens", out)
@@ -96,7 +96,7 @@ class StatusTest(util.SandboxTestCase):
 
     def test_repeat_unit_falls_back_to_calls_without_a_transcript(self):
         util.write_state(self.home, "only", json.dumps(
-            {"calls": 3, "seen": {"k": [1, None, 0]}}))
+            {"calls": 3, "injected_rules": {"k": [1, None, 0]}}))
         out = self.status().stdout
         self.assertIn("measured in file-tool calls", out)
 

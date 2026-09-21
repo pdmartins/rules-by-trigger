@@ -18,48 +18,54 @@ class RecordWrittenTest(unittest.TestCase):
     dict shape main() and the Stop hook hand them."""
 
     def test_a_new_path_is_appended(self):
-        state = {"calls": 1, "seen": {}, "written": []}
+        state = {"calls": 1, "injected_rules": {}, "unverified_writes": []}
         HOOK.record_written(state, "/proj/src/a.py")
-        self.assertEqual(state["written"], ["/proj/src/a.py"])
+        self.assertEqual(state["unverified_writes"], ["/proj/src/a.py"])
 
     def test_the_same_path_twice_is_recorded_once(self):
-        state = {"calls": 1, "seen": {}, "written": ["/proj/src/a.py"]}
+        state = {"calls": 1, "injected_rules": {},
+                 "unverified_writes": ["/proj/src/a.py"]}
         HOOK.record_written(state, "/proj/src/a.py")
-        self.assertEqual(state["written"], ["/proj/src/a.py"])
+        self.assertEqual(state["unverified_writes"], ["/proj/src/a.py"])
 
     def test_order_is_the_order_the_files_were_first_written_in(self):
-        state = {"calls": 1, "seen": {}, "written": []}
+        state = {"calls": 1, "injected_rules": {}, "unverified_writes": []}
         for path in ("/proj/b.py", "/proj/a.py", "/proj/b.py", "/proj/c.py"):
             HOOK.record_written(state, path)
-        self.assertEqual(state["written"],
+        self.assertEqual(state["unverified_writes"],
                          ["/proj/b.py", "/proj/a.py", "/proj/c.py"])
 
     def test_a_missing_key_is_created_rather_than_crashing(self):
-        state = {"calls": 1, "seen": {}}
+        state = {"calls": 1, "injected_rules": {}}
         HOOK.record_written(state, "/proj/src/a.py")
-        self.assertEqual(state["written"], ["/proj/src/a.py"])
+        self.assertEqual(state["unverified_writes"], ["/proj/src/a.py"])
 
     def test_the_cap_drops_the_oldest_path(self):
         cap = HOOK.MAX_WRITTEN_PATHS
-        state = {"calls": 1, "seen": {},
-                 "written": [f"/proj/f{i}.py" for i in range(cap)]}
+        state = {"calls": 1, "injected_rules": {},
+                 "unverified_writes": [f"/proj/f{i}.py" for i in range(cap)]}
         HOOK.record_written(state, "/proj/new.py")
-        self.assertEqual(len(state["written"]), cap, "the list stays bounded")
-        self.assertNotIn("/proj/f0.py", state["written"], "the oldest goes")
-        self.assertIn("/proj/f1.py", state["written"], "the next oldest stays")
-        self.assertEqual(state["written"][-1], "/proj/new.py")
+        self.assertEqual(len(state["unverified_writes"]), cap,
+                         "the list stays bounded")
+        self.assertNotIn("/proj/f0.py", state["unverified_writes"],
+                         "the oldest goes")
+        self.assertIn("/proj/f1.py", state["unverified_writes"],
+                      "the next oldest stays")
+        self.assertEqual(state["unverified_writes"][-1], "/proj/new.py")
 
     def test_take_returns_the_paths_and_clears_them(self):
-        state = {"calls": 1, "seen": {}, "written": ["/proj/a.py", "/proj/b.py"]}
+        state = {"calls": 1, "injected_rules": {},
+                 "unverified_writes": ["/proj/a.py", "/proj/b.py"]}
         taken = HOOK.take_written(state)
-        self.assertEqual(state["written"], [], "cleared at each verification")
+        self.assertEqual(state["unverified_writes"], [],
+                         "cleared at each verification")
         self.assertEqual(taken, ["/proj/a.py", "/proj/b.py"],
                          "the caller keeps what it took, clear or not")
 
     def test_take_on_a_state_that_has_no_list_answers_empty(self):
-        state = {"calls": 1, "seen": {}}
+        state = {"calls": 1, "injected_rules": {}}
         self.assertEqual(HOOK.take_written(state), [])
-        self.assertEqual(state["written"], [])
+        self.assertEqual(state["unverified_writes"], [])
 
     def test_coercion_keeps_the_usable_strings_and_drops_the_rest(self):
         self.assertEqual(HOOK.coerce_written(["/a", 5, None, "", "/a", "/b"]),
@@ -83,7 +89,7 @@ class WriteRecordingTest(util.SandboxTestCase):
         return os.path.join(self.proj, rel).replace(os.sep, "/")
 
     def written(self):
-        return util.read_state(self.home, self.SESSION)["written"]
+        return util.read_state(self.home, self.SESSION)["unverified_writes"]
 
     def test_a_write_records_the_path(self):
         util.write_rule(self.proj, "src.md", "src/**", "Rule text.")
@@ -95,8 +101,9 @@ class WriteRecordingTest(util.SandboxTestCase):
         for index, tool in enumerate(HOOK.WRITE_TOOL_NAMES):
             session = f"tool-{index}"
             self.hook_for(session=session, tool=tool)
-            self.assertEqual(util.read_state(self.home, session)["written"],
-                             [self.target()], tool)
+            self.assertEqual(
+                util.read_state(self.home, session)["unverified_writes"],
+                [self.target()], tool)
 
     def test_a_read_records_nothing(self):
         util.write_rule(self.proj, "src.md", "src/**", "Rule text.")
@@ -137,20 +144,22 @@ class WriteRecordingTest(util.SandboxTestCase):
                          "the refused path was never appended")
 
     def test_a_malformed_written_list_on_disk_is_coerced(self):
-        """Same contract as `seen`: a hand-edited or half-written state file
-        repairs itself on the next save instead of reaching the end of the
-        turn as something the glob matcher cannot read."""
+        """Same contract as `injected_rules`: a hand-edited or half-written
+        state file repairs itself on the next save instead of reaching the
+        end of the turn as something the glob matcher cannot read."""
         util.write_rule(self.proj, "src.md", "src/**", "Rule text.")
         util.write_state(self.home, self.SESSION,
-                         json.dumps({"calls": 3, "seen": {},
-                                     "written": ["/proj/a.py", 5, "", None]}))
+                         json.dumps({"calls": 3, "injected_rules": {},
+                                     "unverified_writes":
+                                         ["/proj/a.py", 5, "", None]}))
         self.hook_for(session=self.SESSION, tool="Write")
         self.assertEqual(self.written(), ["/proj/a.py", self.target()])
 
     def test_written_of_the_wrong_type_entirely_becomes_a_list(self):
         util.write_rule(self.proj, "src.md", "src/**", "Rule text.")
         util.write_state(self.home, self.SESSION,
-                         json.dumps({"calls": 3, "seen": {}, "written": "nope"}))
+                         json.dumps({"calls": 3, "injected_rules": {},
+                                     "unverified_writes": "nope"}))
         self.hook_for(session=self.SESSION, tool="Read")
         self.assertEqual(self.written(), [])
 

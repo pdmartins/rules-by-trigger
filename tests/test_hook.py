@@ -23,7 +23,8 @@ class HookEndToEndTest(util.SandboxTestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("API RULE CONTENT", text)
         self.assertNotIn("src/api/**", text, "no provenance is emitted")
-        self.assertTrue(util.hook_output(proc).get("suppressOutput"))
+        self.assertNotIn("suppressOutput", util.hook_output(proc),
+                         "Claude Code documents suppressOutput as a no-op")
         self.assertIsNone(self.touch()[1], "second touch must not re-inject")
         self.assertIsNotNone(self.touch(session="s2")[1], "a new session injects again")
 

@@ -26,8 +26,8 @@ from .constants import (DEFAULT_LANGUAGE,
                         MAX_TOTAL_CHARS, MAX_TYPE_PREFIX_CHARS,
                         MAX_TYPE_TEXT_CHARS, MIN_CONFIGURABLE_RULE_CHARS,
                         MIN_REMEMBER_AGAIN_CALLS, PLUGIN_CONFIG_PATH,
-                        REMEMBER_AGAIN_ENV_VAR, RULE_WARN_CHARS, coerce_int,
-                        warn)
+                        REMEMBER_AGAIN_ENV_VAR, RULE_WARN_CHARS,
+                        SHOW_INJECTIONS_KEY, coerce_int, warn)
 from .configfile import config_path_for, read_config_file
 from .frontmatter import parse_remember_again_after
 from .messages import sanitize_language
@@ -202,6 +202,26 @@ def sanitize_rule_size(raw, source, trusted):
     return sizes or None
 
 
+def sanitize_show_injections(raw, source, trusted):
+    """Whether the user sees a terminal line naming the rules a tool call
+    injected, or None when this layer says nothing usable about it.
+
+    Trusted in one direction only, the way `rule_size` is: an untrusted
+    (project) layer may turn the notice ON — `true` — but never OFF. A repository whose rules get injected must not be able to hide from
+    the user that they are; that is the one thing `show_injections` exists to
+    guarantee, and a project setting `false` for itself would defeat it
+    completely. Only `~/.claude/rules-by-trigger/config.json`, the machine
+    owner's own layer, may turn it off."""
+    if not isinstance(raw, bool):
+        warn(f"{source}: '{SHOW_INJECTIONS_KEY}' must be true or false; ignored")
+        return None
+    if not trusted and not raw:
+        warn(f"{source}: '{SHOW_INJECTIONS_KEY}: false' is ignored here — only "
+             f"~/.claude/rules-by-trigger/config.json can turn it off")
+        return None
+    return raw
+
+
 # The config keys this hook reads, each with the function that bounds it and
 # whether the layer's trust level changes the answer. Every sanitizer answers
 # None for "nothing usable here", so one uniform check covers them all —
@@ -213,6 +233,7 @@ LAYER_SANITIZERS = (
     ("rule_size", sanitize_rule_size, True),
     ("reinject_budget", sanitize_reinject_budget, False),
     (LANGUAGE_KEY, sanitize_language, False),
+    (SHOW_INJECTIONS_KEY, sanitize_show_injections, True),
 )
 
 
@@ -358,3 +379,11 @@ def language(config):
     default in place, because no answer here may end with the hook injecting
     nothing."""
     return (config or {}).get(LANGUAGE_KEY) or DEFAULT_LANGUAGE
+
+
+def show_injections(config):
+    """Whether the user sees a terminal line naming the rules a tool call
+    injected. True when no layer sets it — the shipped default — since the
+    notice is meant to be seen unless the machine owner turns it off."""
+    value = (config or {}).get(SHOW_INJECTIONS_KEY)
+    return True if value is None else value

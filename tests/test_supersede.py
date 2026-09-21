@@ -15,7 +15,7 @@ HOOK = util.load_hook_module()
 
 class PopSupersededEntriesTest(unittest.TestCase):
     """Direct coverage of the function: no subprocess, no rule files — just
-    the `seen` dict shape main() already hands it."""
+    the `injected_rules` dict shape main() already hands it."""
 
     def test_a_stale_entry_under_the_same_scope_and_name_is_removed_and_reported(self):
         seen = {"/proj::src.md::old1": [3, 10_000, 0]}
@@ -58,16 +58,32 @@ class PopSupersededEntriesTest(unittest.TestCase):
         self.assertEqual(seen, {"/proj::other.md::keep": [2, 20_000, 0]},
                          "only the two stale editions of THIS rule are gone")
 
+    def test_a_subagent_sweep_leaves_the_main_conversations_entry_alone(self):
+        """The main conversation still holds the old text: its entry must
+        survive, so its own next delivery says it supersedes something."""
+        seen = {
+            "/proj::src.md::old1": [1, 10_000, 0],
+            "agent::a1::/proj::src.md::old1": [2, 10_000, 0],
+        }
+        self.assertTrue(HOOK.pop_superseded_entries(
+            seen, "/proj", "src.md", "new1", "agent::a1::"))
+        self.assertEqual(seen, {"/proj::src.md::old1": [1, 10_000, 0]})
+
+    def test_a_main_conversation_sweep_leaves_a_subagents_entry_alone(self):
+        seen = {"agent::a1::/proj::src.md::old1": [2, 10_000, 0]}
+        self.assertFalse(HOOK.pop_superseded_entries(seen, "/proj", "src.md", "new1"))
+        self.assertEqual(seen, {"agent::a1::/proj::src.md::old1": [2, 10_000, 0]})
+
 
 class SupersedeNoticeEndToEndTest(util.SandboxTestCase):
     """Acceptance case: editing a rule mid-session marks the very next
     delivery as superseding the earlier text, and the stale entry does not
-    linger in `seen` afterwards."""
+    linger in `injected_rules` afterwards."""
 
     PROJECT_SUBDIRS = ("src",)
 
     def state_seen(self, session):
-        return util.read_state(self.home, session)["seen"]
+        return util.read_state(self.home, session)["injected_rules"]
 
     def test_a_brand_new_rule_carries_no_supersede_notice(self):
         util.write_rule(self.proj, "src.md", "src/**", "VERSION ONE")

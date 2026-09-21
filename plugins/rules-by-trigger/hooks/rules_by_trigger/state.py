@@ -20,6 +20,7 @@ from .discovery import is_safely_owned
 # Re-exported: `is_due` and `pop_superseded_entries` moved to `due.py` when this
 # module reached its line ceiling, and their callers still address them here.
 from .due import is_due, pop_superseded_entries  # noqa: F401
+from .due import trim_injected_rules
 from .written import coerce_written
 
 
@@ -206,7 +207,7 @@ def empty_state(rules_written=None):
 
     `rules_written` seeds the one key a reset deliberately keeps; every
     other caller leaves it at the default, empty list."""
-    return {"calls": 0, "seen": {}, "written": [],
+    return {"calls": 0, "injected_rules": {}, "unverified_writes": [],
             "rules_written": list(rules_written) if rules_written else []}
 
 
@@ -214,23 +215,33 @@ def open_state(state_path):
     """Open the session state under an exclusive lock: (fd, state).
 
     state = {"calls": int,
-             "seen": {dedup_key: [call number, context tokens or None,
-                                  reinjections already sent]},
-             "written": [absolute path, ...],
+             "injected_rules": {dedup_key: [call number, context tokens or None,
+                                            reinjections already sent]},
+             "unverified_writes": [absolute path, ...],
              "rules_written": [absolute path, ...]}.
+
+    A dedup key in `injected_rules` is `<agent prefix><scope dir>::<rule
+    name>::<digest>` (see `due.rule_key_prefix`); the same map also holds
+    `<agent prefix>legacy::<label>` for the legacy-format notice, which is not
+    a rule but is deduped the same way. It is capped at MAX_INJECTED_RULES,
+    oldest call number first (see `due.trim_injected_rules`): a key recorded
+    inside a subagent is never cleared on its own until /clear, a compaction,
+    or the 14-day stale sweep, and the whole state file is rewritten on every
+    single tool call.
 
     Both measures are recorded because rules choose their own unit: one rule may
     ask to be repeated every 30k tokens and another every 25 calls, in the same
     session. Storing only the session's preferred unit would silently ignore
     whichever rule disagreed with it.
 
-    `written` is the third key and answers a different question: which files
-    this turn has written since the last verification ran. It lives in the
-    session state because `Stop`, the only hook that closes a turn, is told
-    nothing about files, so a `verify:` command can only learn what to check
-    from the trail the write path leaves here (see `written.py`). A missing or
-    malformed value is coerced to [] like the rest, so a state file nobody can
-    parse costs a verification rather than the turn.
+    `unverified_writes` is the third key and answers a different question:
+    which files this turn has written since the last verification ran. It
+    lives in the session state because `Stop`, the only hook that closes a
+    turn, is told nothing about files, so a `verify:` command can only learn
+    what to check from the trail the write path leaves here (see
+    `written.py`). A missing or malformed value is coerced to [] like the
+    rest, so a state file nobody can parse costs a verification rather than
+    the turn.
 
     `rules_written` is the fourth, and the only one that outlives a turn: the
     rule files this SESSION wrote itself, whose `verify:` therefore waits for
@@ -278,21 +289,23 @@ def open_state(state_path):
         # type repairs on the next save instead of dropping the fd (which would
         # make every tool call re-parse the same corrupt file all session). A
         # non-int `calls` must not spam full re-injections, and a malformed
-        # `seen` entry must not crash the arithmetic in main() — that crash
-        # aborts the whole injection, taking the user's global rules with it, on
-        # every single tool call until the session ends.
+        # `injected_rules` entry must not crash the arithmetic in main() — that
+        # crash aborts the whole injection, taking the user's global rules
+        # with it, on every single tool call until the session ends.
         calls = coerce_int(data.get("calls") or 0, 0)
-        raw_seen = data.get("seen")
-        seen = {}
-        if isinstance(raw_seen, dict):
-            for entry_key, entry_value in raw_seen.items():
+        raw_injected_rules = data.get("injected_rules")
+        injected_rules = {}
+        if isinstance(raw_injected_rules, dict):
+            for entry_key, entry_value in raw_injected_rules.items():
                 entry = coerce_seen_entry(entry_value)
                 if entry is not None:
-                    seen[entry_key] = entry
-        written = coerce_written(data.get("written"))
+                    injected_rules[entry_key] = entry
+        trim_injected_rules(injected_rules)
+        unverified_writes = coerce_written(data.get("unverified_writes"))
         rules_written = coerce_written(data.get("rules_written"),
                                        MAX_RULES_WRITTEN)
-        return fd, {"calls": calls, "seen": seen, "written": written,
+        return fd, {"calls": calls, "injected_rules": injected_rules,
+                    "unverified_writes": unverified_writes,
                     "rules_written": rules_written}
     except Exception as exc:
         warn(f"failed reading state {state_path}: {exc}")
@@ -341,27 +354,28 @@ def cleanup_stale_state():
 def detect_context_regression(state, current_tokens):
     """Fallback for when SessionStart(compact|clear)'s async reset loses the
     race against the very next PreToolUse: the reset's `--reset-session`
-    delete has not landed yet, so `seen` still carries the pre-compaction
-    high-water mark, and a rule whose text just got summarized out of context
-    reads as "already delivered" and stays silent exactly when it needs to be
-    repeated (this is the failure the reset exists to prevent; here it is
-    caught late instead of not at all).
+    delete has not landed yet, so `injected_rules` still carries the
+    pre-compaction high-water mark, and a rule whose text just got summarized
+    out of context reads as "already delivered" and stays silent exactly when
+    it needs to be repeated (this is the failure the reset exists to prevent;
+    here it is caught late instead of not at all).
 
-    Clears `seen` in place — `calls` is untouched — and returns True when
-    `current_tokens` has fallen more than TOKEN_REGRESSION_SLACK below the
-    highest token count recorded on any seen entry: a drop that size is
-    compaction or /clear, not the ordinary jitter of which turn the
-    transcript's last usage record happens to describe. `current_tokens is
-    None` (no readable transcript) or no seen entry with a recorded token
-    count both mean there is nothing to compare against, so nothing is
-    cleared — a regression is never guessed at, only measured.
+    Clears `injected_rules` in place — `calls` is untouched — and returns True
+    when `current_tokens` has fallen more than TOKEN_REGRESSION_SLACK below
+    the highest token count recorded on any `injected_rules` entry: a drop
+    that size is compaction or /clear, not the ordinary jitter of which turn
+    the transcript's last usage record happens to describe. `current_tokens is
+    None` (no readable transcript) or no entry with a recorded token count
+    both mean there is nothing to compare against, so nothing is cleared — a
+    regression is never guessed at, only measured.
     """
     if current_tokens is None:
         return False
-    seen = state.get("seen")
-    if not isinstance(seen, dict):
+    injected_rules = state.get("injected_rules")
+    if not isinstance(injected_rules, dict):
         return False
-    recorded = [entry[1] for entry in map(coerce_seen_entry, seen.values())
+    recorded = [entry[1]
+                for entry in map(coerce_seen_entry, injected_rules.values())
                 if entry is not None and entry[1] is not None]
     if not recorded:
         return False
@@ -369,7 +383,7 @@ def detect_context_regression(state, current_tokens):
     if current_tokens + TOKEN_REGRESSION_SLACK < max_recorded:
         warn(f"context tokens dropped from {max_recorded} to {current_tokens}; "
              "compaction/clear likely won the race against the async reset, "
-             "clearing seen rules so they re-inject on this call")
-        seen.clear()
+             "clearing injected rules so they re-inject on this call")
+        injected_rules.clear()
         return True
     return False

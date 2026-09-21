@@ -5,6 +5,56 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
+## 0.8.0 — 2026-09-21
+
+### Added
+
+- A terminal line for the user, one per tool call that injects a rule, naming
+  every rule it injected (marking repeats, new versions and subagent calls).
+  It travels on `systemMessage`, which Claude Code shows to the user, and the
+  text injected for the model (`additionalContext`) stays exactly as before.
+  Controlled by the new `show_injections` config key (default on), which only
+  `~/.claude/rules-by-trigger/config.json` may turn off.
+
+### Changed
+
+- The README's *Install* section now describes the first-run setup that 0.7.0
+  added: the language question, the hardening that `doctor` asks before
+  writing, where the answers are saved, and the one-line reminder the CLI
+  prints until then. The README said nothing about it, so that reminder was
+  the first a user heard of the setup.
+- Two keys of the session state file are renamed to say what they hold:
+  `seen` is now `injected_rules`, and `written` is now `unverified_writes`.
+  `injected_rules` now keeps at most 512 entries and drops the oldest first.
+  A subagent's entries are only cleared by /clear, a compaction or the 14-day
+  stale sweep, so a session that runs many subagents could otherwise grow the
+  file without limit. A rule dropped this way is injected again, once, the
+  next time it matches. There is no migration, because the state lives for
+  one session: a session already open when the update lands injects its rules
+  once more and does not verify the writes it made before the update in that
+  turn.
+- The PreToolUse payload no longer sends `suppressOutput`. Claude Code
+  documents the field as having no effect and never shows a successful hook's
+  stdout in the transcript.
+
+### Removed
+
+- The README's "vs. native path rules" section. Its claims did not all survive
+  a check against Claude Code 2.1.277: it cited anthropics/claude-code#17204 as
+  a user-scope bug, and that issue is about how rule frontmatter is parsed.
+  Its note on what a rule buys (convention adherence and token economy, not
+  task correctness) moved to *Why*.
+
+### Fixed
+
+- A rule the main conversation had already received now also reaches a
+  subagent that touches a file it covers. The record of what was delivered was
+  kept per session, and a subagent shares the session's id while starting from
+  an empty context, so it was treated as already holding the rule and got
+  nothing. Deliveries are now recorded per context, using the `agent_id` Claude
+  Code sends from inside a subagent. What a subagent writes is still verified at
+  the end of the main conversation's turn, as before.
+
 ## 0.7.0 — 2026-09-15
 
 The plugin is renamed `rules-by-trigger`, and a rule can now declare a

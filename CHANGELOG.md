@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
+## 0.8.0 — 2026-09-21
+
 ### Added
 
 - A terminal line for the user, one per tool call that injects a rule, naming

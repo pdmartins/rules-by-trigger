@@ -30,6 +30,13 @@ or `config.json`.
   content.
 - Bash access (`cat`, `sed -i`) does NOT trigger injection; only the five file
   tools do.
+- The user sees one terminal line per tool call that injected a rule, naming
+  every rule it injected (marking repeats, new versions and subagent calls).
+  It rides on `systemMessage`, which Claude Code shows to the user, and adds
+  nothing to `additionalContext`, the text the hook injects for the model.
+  `"show_injections": false` in the GLOBAL config turns it off; a project
+  config cannot (a repository whose rules get injected must not be able to
+  hide that from the user).
 - Scopes: every `.claude/rules-by-trigger/` from the touched file's directory up to
   the filesystem root, plus `~/.claude/rules-by-trigger/`. The walk does not stop
   at a repository boundary, so a git submodule receives its parent repository's

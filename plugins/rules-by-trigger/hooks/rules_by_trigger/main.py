@@ -10,14 +10,15 @@ import sys
 from .constants import (DEFAULT_LANGUAGE, MAX_TOTAL_CHARS,
                         WRITE_TOOL_NAMES, warn)
 from .config import (language, load_config, max_rule_chars,
-                     remember_again_after_default)
-from .context import build_context, build_block_reason
+                     remember_again_after_default, show_injections)
+from .context import build_block_reason
 from .messages import LEGACY_NOTICE_KEY, SESSION_NOTICE_KEY, messages_for
 from .discovery import find_scopes, global_scope
 from .due import agent_key_prefix, rule_key_prefix
 from .frontmatter import block_of, remember_again_after_of
 from .matching import (collect_candidates, extract_file_path,
                        is_inside_rules_dir)
+from .notice import build_pretooluse_output
 from .reinject import reinject_budget
 from .rules import read_rule_file
 from .state import (cleanup_stale_state, close_state, context_size,
@@ -278,13 +279,8 @@ def main():
                 # re-injecting a rule (a harmless duplicate) rather than marking
                 # it delivered when the model never received it. The design
                 # prefers a rare double injection to loss.
-                payload_out = json.dumps({
-                    "hookSpecificOutput": {
-                        "hookEventName": "PreToolUse",
-                        "additionalContext": build_context(blocks, messages),
-                    },
-                    "suppressOutput": True,
-                })
+                payload_out = json.dumps(build_pretooluse_output(
+                    blocks, messages, bool(agent_prefix), show_injections(config)))
                 sys.stdout.write(payload_out)
                 sys.stdout.flush()
         save_state(state_fd, state)  # advances the call counter either way

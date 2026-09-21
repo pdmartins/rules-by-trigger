@@ -17,7 +17,11 @@
     "around them comes out in, whenever the plugin ships a translation of it",
     "(en, pt-BR). Any other language is still a fine value: the rules are",
     "written in it and only that surrounding text falls back to English.",
-    "Rule file names, type prefixes and frontmatter keys never translate."
+    "Rule file names, type prefixes and frontmatter keys never translate.",
+    "show_injections controls the one-line terminal notice naming the rules",
+    "a tool call injected; the text injected for the model does not change.",
+    "Only your own ~/.claude/rules-by-trigger/config.json may turn it off; a",
+    "project layer may turn it back on, never off."
   ],
 
   "language": "en",
@@ -65,5 +69,7 @@
     "warn_chars": 2000
   },
 
-  "reinject_budget": 3
+  "reinject_budget": 3,
+
+  "show_injections": true
 }

@@ -5,6 +5,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
+### Added
+
+- A terminal line for the user, one per tool call that injects a rule, naming
+  every rule it injected (marking repeats, new versions and subagent calls).
+  It travels on `systemMessage`, which Claude Code shows to the user, and the
+  text injected for the model (`additionalContext`) stays exactly as before.
+  Controlled by the new `show_injections` config key (default on), which only
+  `~/.claude/rules-by-trigger/config.json` may turn off.
+
 ### Changed
 
 - The README's *Install* section now describes the first-run setup that 0.7.0

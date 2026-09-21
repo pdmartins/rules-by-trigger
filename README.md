@@ -308,6 +308,20 @@ only your own layers choose the language it arrives in.
 Rule file names, type prefixes (`BUSN`, `ARCH`, …) and frontmatter keys are
 identifiers, not prose, and never translate.
 
+### `show_injections`
+
+Every tool call that injects a rule also prints one terminal line naming it —
+`rules-by-trigger: CONV_api.md`, with `(repeat)` or `(new version)` per rule
+and `(subagent)` when the call ran inside one. It is for the person watching
+the terminal: it travels on the hook's `systemMessage` field, which Claude
+Code shows to the user, and the text injected for the model
+(`additionalContext`) is the same with or without it.
+`show_injections: false` turns it off, but only from
+`~/.claude/rules-by-trigger/config.json`, the machine owner's own layer — a
+project cannot set it to `false` for itself, because a repository whose rules
+get injected must not be able to hide that from the user. A project MAY set
+it back to `true` over a global `false`.
+
 ## Glob semantics
 
 | Glob | Matches |

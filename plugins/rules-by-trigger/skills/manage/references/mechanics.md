@@ -10,8 +10,9 @@ or `config.json`.
 - What reaches the model is the rule bodies and nothing else — an opening tag,
   the bodies separated by a `---` line, a closing tag. No preamble, no rule
   name, no glob, no scope: nothing about a rule's origin is emitted.
-- A rule is injected **once per session**, then **sent again, whole**, once the
-  context has moved on by `remember_again_after` — and only when the rule's glob
+- A rule is injected **once per session** in the main conversation, and once in
+  each subagent, which starts from an empty context of its own; then it is
+  **sent again, whole**, once the context has moved on by `remember_again_after` — and only when the rule's glob
   matches again, so a rule for a folder nobody reopens is never repeated.
   The value takes tokens (`30k`, `1M`), calls (`25 calls`), or `never`. Each
   rule type carries its own default, which `add` writes into the rule; the

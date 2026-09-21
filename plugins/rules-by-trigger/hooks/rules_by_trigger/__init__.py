@@ -36,9 +36,10 @@ What reaches the model is the rule bodies and nothing else:
 Design constraints:
 - Never blocks the tool call: any internal failure goes to stderr and the hook
   exits 0 with no stdout.
-- Each rule *version* is injected at most once per session (the dedup key
-  includes a hash of the content, so editing a rule re-injects it), then
-  repeated in full once the context has moved on by `remember_again_after`.
+- Each rule *version* is injected at most once per context — the main
+  conversation, or one subagent (the dedup key includes a hash of the content,
+  so editing a rule re-injects it) — then repeated in full once the context has
+  moved on by `remember_again_after`.
 - Files inside `.claude/rules-by-trigger/` never trigger injection.
 - Rule content is untrusted input, and is not dressed up as anything more
   trustworthy than it is. The emitted text carries no provenance and no
@@ -67,7 +68,7 @@ Layout — one concern per module, none over 400 lines:
     rules.py        rule names, reading a rule file, indexing a scope
     matching.py     the touched path, and the rules it matches
     state.py        per-session dedup, context size, repeat scheduling
-    due.py          when a delivered rule is due again, and edit cleanup
+    due.py          the dedup key, when a rule is due again, edit cleanup
     written.py      the paths written since the last verification
     context.py      assembling the injected text, defanging forged framing
     verify.py       the Stop hook: which `verify:` commands a turn owes
@@ -81,7 +82,7 @@ exists because `hooks.json`, the `bin/` launchers, the admin and the tests all
 address the hook by that path.
 """
 
-from .constants import (ADMIN_COMMAND, BRAZILIAN_PORTUGUESE,
+from .constants import (ADMIN_COMMAND, AGENT_KEY_PREFIX, BRAZILIAN_PORTUGUESE,
                         CLAUDE_DIR_NAME, CONFIG_FILE_NAME, DEFAULT_LANGUAGE,
                         DEFAULT_REMEMBER_AGAIN_CALLS,
                         DEFAULT_REMEMBER_AGAIN_TOKENS,
@@ -166,6 +167,7 @@ from .state import (cleanup_stale_state, close_state,
                     coerce_seen_entry, context_size, detect_context_regression,
                     is_due, lock_exclusive, open_state, pop_superseded_entries,
                     save_state, state_dir, state_file_for)
+from .due import agent_key_prefix, rule_key_prefix
 from .stats import (load_stats, matched_dir, record_injections,
                     record_verifications, rule_key, stats_path, update_stats)
 from .written import (coerce_written, record_rules_written, record_written,

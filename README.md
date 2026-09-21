@@ -656,8 +656,9 @@ Two commands answer nearly everything; `/rules-by-trigger:status` and the
 "<plugin>/bin/rules-by-trigger" doctor --root <root> [--fix]
 ```
 
-- **Rule not injecting?** Each rule version injects once per session. The
-  state lives in `$CLAUDE_PLUGIN_DATA/state/` for a plugin install (falling
+- **Rule not injecting?** Each rule version injects once in the main
+  conversation and once in each subagent, which starts from an empty context.
+  The state lives in `$CLAUDE_PLUGIN_DATA/state/` for a plugin install (falling
   back to `~/.claude/cache/rules-by-trigger/`); delete `<state-dir>/<session_id>.json`
   to force re-injection. Check that a scope containing the rule is actually on
   the path from the touched file up to the filesystem root — the walk does not

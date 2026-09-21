@@ -129,6 +129,10 @@ MAX_ANCESTOR_STEPS = 64
 # remaining rules are simply not consulted for this call.
 MATCH_BUDGET_SECONDS = 2.0
 STATE_MAX_AGE_SECONDS = 14 * 24 * 3600
+# Leads every `seen` key recorded inside a subagent, ahead of the scope
+# directory, so its deliveries never share a key with the main conversation's
+# or another subagent's (see `due.agent_key_prefix`).
+AGENT_KEY_PREFIX = "agent::"
 # Per-rule usage lives beside the session state, in one file that the stale
 # sweep never touches: it is the record that outlives sessions on purpose.
 # Every collection in it is capped so it stays a few KB however long it lives.

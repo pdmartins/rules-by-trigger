@@ -14,6 +14,7 @@ from .config import (language, load_config, max_rule_chars,
 from .context import build_context, build_block_reason
 from .messages import LEGACY_NOTICE_KEY, SESSION_NOTICE_KEY, messages_for
 from .discovery import find_scopes, global_scope
+from .due import agent_key_prefix, rule_key_prefix
 from .frontmatter import block_of, remember_again_after_of
 from .matching import (collect_candidates, extract_file_path,
                        is_inside_rules_dir)
@@ -104,14 +105,14 @@ def over_budget(blocks, text, what):
     return True
 
 
-def build_blocks(candidates, config, seen, call_number, tokens):
+def build_blocks(candidates, config, seen, call_number, tokens, agent_prefix):
     """The deliveries this tool call should inject, in candidate order.
 
-    A candidate is delivered when this session has not seen this exact version
-    of it, or when `is_due` says the context has moved far enough since it last
-    did. Each delivery is recorded in `seen` as it is appended, so a rule left
-    out by the injection budget is retried on the next tool call instead of
-    counting as already delivered.
+    A candidate is delivered when this context (`agent_prefix`: the main
+    conversation or one subagent) has not seen this exact version of it, or
+    when `is_due` says it has moved far enough since. Each delivery is recorded
+    in `seen` as it is appended, so a rule left out by the injection budget is
+    retried on the next tool call instead of counting as already delivered.
     """
     body_limit = max_rule_chars(config)
     budget = reinject_budget(config)
@@ -128,7 +129,7 @@ def build_blocks(candidates, config, seen, call_number, tokens):
         # new rule and is injected again, rather than being treated as
         # already delivered for the rest of the session.
         digest = hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
-        key = f"{os.path.realpath(scope_dir)}::{name}::{digest}"
+        key = rule_key_prefix(agent_prefix, scope_dir, name) + digest
         last_seen = seen.get(key)
 
         if last_seen is None:
@@ -155,7 +156,7 @@ def build_blocks(candidates, config, seen, call_number, tokens):
         # first-time digest — a plain repeat of an already-delivered
         # version is not an edit.
         superseded = last_seen is None and pop_superseded_entries(
-            seen, scope_dir, name, digest)
+            seen, scope_dir, name, digest, agent_prefix)
         blocks.append({"name": name, "text": text, "truncated": truncated,
                        "superseded": superseded, "scope_dir": scope_dir,
                        "glob": glob, "repeat": reinjections > 0})
@@ -250,17 +251,19 @@ def main():
             # text is fresh in context. Must run before any dedup decision below.
             detect_context_regression(state, tokens)
             seen = state["seen"]
+            agent_prefix = agent_key_prefix(payload)
 
-            blocks = build_blocks(candidates, config, seen, call_number, tokens)
+            blocks = build_blocks(candidates, config, seen, call_number, tokens,
+                                  agent_prefix)
 
-            # The legacy notice is told once per scope per session. Repeating it
+            # The legacy notice is told once per scope per context. Repeating it
             # on every tool call would be noise the user cannot silence except by
             # migrating, which is exactly what they may not be ready to do yet.
             # It rides in the same injection as the rules, so it answers to the
             # same ceiling.
             notice = messages[LEGACY_NOTICE_KEY]
             for label in legacy_scopes:
-                key = f"legacy::{label}"
+                key = f"{agent_prefix}legacy::{label}"
                 if key in seen:
                     continue
                 if over_budget(blocks, notice,

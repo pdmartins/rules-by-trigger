@@ -21,6 +21,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
   Its note on what a rule buys (convention adherence and token economy, not
   task correctness) moved to *Why*.
 
+### Fixed
+
+- A rule the main conversation had already received now also reaches a
+  subagent that touches a file it covers. The record of what was delivered was
+  kept per session, and a subagent shares the session's id while starting from
+  an empty context, so it was treated as already holding the rule and got
+  nothing. Deliveries are now recorded per context, using the `agent_id` Claude
+  Code sends from inside a subagent. What a subagent writes is still verified at
+  the end of the main conversation's turn, as before.
+
 ## 0.7.0 — 2026-09-15
 
 The plugin is renamed `rules-by-trigger`, and a rule can now declare a

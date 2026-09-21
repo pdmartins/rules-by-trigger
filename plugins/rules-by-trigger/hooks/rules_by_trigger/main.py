@@ -95,8 +95,8 @@ def over_budget(blocks, text, what):
     The rules are not the only thing appended to one injection, and everything
     appended to it answers to the same ceiling — so the accounting and the
     wording live here, once, rather than being restated by each caller. A
-    delivery held back is deliberately NOT recorded in `seen`: the next tool
-    call offers it again."""
+    delivery held back is deliberately NOT recorded in `injected_rules`: the
+    next tool call offers it again."""
     spent = sum(len(block["text"]) for block in blocks)
     if spent + len(text) <= MAX_TOTAL_CHARS:
         return False
@@ -105,14 +105,14 @@ def over_budget(blocks, text, what):
     return True
 
 
-def build_blocks(candidates, config, seen, call_number, tokens, agent_prefix):
+def build_blocks(candidates, config, injected_rules, call_number, tokens, agent_prefix):
     """The deliveries this tool call should inject, in candidate order.
 
     A candidate is delivered when this context (`agent_prefix`: the main
     conversation or one subagent) has not seen this exact version of it, or
-    when `is_due` says it has moved far enough since. Each delivery is recorded
-    in `seen` as it is appended, so a rule left out by the injection budget is
-    retried on the next tool call instead of counting as already delivered.
+    when `is_due` says it has moved far enough since. Each delivery goes into
+    `injected_rules` as it is appended, so a rule the budget left out is
+    retried on the next tool call instead of counting as delivered.
     """
     body_limit = max_rule_chars(config)
     budget = reinject_budget(config)
@@ -130,7 +130,7 @@ def build_blocks(candidates, config, seen, call_number, tokens, agent_prefix):
         # already delivered for the rest of the session.
         digest = hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
         key = rule_key_prefix(agent_prefix, scope_dir, name) + digest
-        last_seen = seen.get(key)
+        last_seen = injected_rules.get(key)
 
         if last_seen is None:
             # The first delivery is free: it never counts against the
@@ -156,11 +156,11 @@ def build_blocks(candidates, config, seen, call_number, tokens, agent_prefix):
         # first-time digest — a plain repeat of an already-delivered
         # version is not an edit.
         superseded = last_seen is None and pop_superseded_entries(
-            seen, scope_dir, name, digest, agent_prefix)
+            injected_rules, scope_dir, name, digest, agent_prefix)
         blocks.append({"name": name, "text": text, "truncated": truncated,
                        "superseded": superseded, "scope_dir": scope_dir,
                        "glob": glob, "repeat": reinjections > 0})
-        seen[key] = [call_number, tokens, reinjections]
+        injected_rules[key] = [call_number, tokens, reinjections]
     return blocks
 
 
@@ -246,15 +246,15 @@ def main():
             messages = messages_for(language(config))
             tokens = context_size(payload)
             # Catches the compaction/clear the async SessionStart reset lost the
-            # race against: a token count that dropped hard since the last
-            # recorded injection means `seen` still thinks the summarized-away
-            # text is fresh in context. Must run before any dedup decision below.
+            # race against: a hard drop in tokens since the last recorded
+            # injection means `injected_rules` still counts the summarized-away
+            # text as in context. Must run before any dedup decision below.
             detect_context_regression(state, tokens)
-            seen = state["seen"]
+            injected_rules = state["injected_rules"]
             agent_prefix = agent_key_prefix(payload)
 
-            blocks = build_blocks(candidates, config, seen, call_number, tokens,
-                                  agent_prefix)
+            blocks = build_blocks(candidates, config, injected_rules, call_number,
+                                  tokens, agent_prefix)
 
             # The legacy notice is told once per scope per context. Repeating it
             # on every tool call would be noise the user cannot silence except by
@@ -264,17 +264,17 @@ def main():
             notice = messages[LEGACY_NOTICE_KEY]
             for label in legacy_scopes:
                 key = f"{agent_prefix}legacy::{label}"
-                if key in seen:
+                if key in injected_rules:
                     continue
                 if over_budget(blocks, notice,
                                f"the legacy-format notice for {label}"):
                     continue
                 blocks.append({"name": "legacy-format", "text": notice})
-                seen[key] = [call_number, tokens, 0]
+                injected_rules[key] = [call_number, tokens, 0]
 
             if blocks:
                 # Emit the injection and flush it BEFORE recording the rules as
-                # seen: if the process dies in the window, the worst case is
+                # injected: if the process dies in the window, the worst case is
                 # re-injecting a rule (a harmless duplicate) rather than marking
                 # it delivered when the model never received it. The design
                 # prefers a rare double injection to loss.

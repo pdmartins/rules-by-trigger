@@ -12,6 +12,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
   writing, where the answers are saved, and the one-line reminder the CLI
   prints until then. The README said nothing about it, so that reminder was
   the first a user heard of the setup.
+- Two keys of the session state file are renamed to say what they hold:
+  `seen` is now `injected_rules`, and `written` is now `unverified_writes`.
+  `injected_rules` now keeps at most 512 entries and drops the oldest first.
+  A subagent's entries are only cleared by /clear, a compaction or the 14-day
+  stale sweep, so a session that runs many subagents could otherwise grow the
+  file without limit. A rule dropped this way is injected again, once, the
+  next time it matches. There is no migration, because the state lives for
+  one session: a session already open when the update lands injects its rules
+  once more and does not verify the writes it made before the update in that
+  turn.
 
 ### Removed
 

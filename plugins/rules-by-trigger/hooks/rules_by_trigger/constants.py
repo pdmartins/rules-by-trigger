@@ -79,6 +79,14 @@ MAX_WRITTEN_PATHS = 512
 # above: a session that writes more than this many rule files is not a session
 # this gate has to serve.
 MAX_RULES_WRITTEN = 64
+# How many rules (and the legacy-format notice) one session remembers having
+# injected, across every context: the main conversation and every subagent it
+# spawned. A key recorded inside a subagent carries an `agent::` prefix (see
+# `due.agent_key_prefix`), and nothing clears a finished subagent's entries on
+# its own — not until /clear, a compaction, or the 14-day stale sweep — while
+# the whole state file is rewritten on every single tool call. See
+# `due.trim_injected_rules` for what happens past this cap.
+MAX_INJECTED_RULES = 512
 # What the `Stop` hook gets from Claude Code before it is killed and its output
 # discarded. `hooks/hooks.json` mirrors this number by hand, because JSON cannot
 # import a constant — the test suite asserts the two still agree.

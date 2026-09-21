@@ -48,8 +48,8 @@ class VerifyEdgeCaseTestCase(util.SandboxTestCase):
     def wrote(self, *paths, session=None):
         """Plant the state a turn's writes leave behind (see `written.py`)."""
         util.write_state(self.home, session or self.SESSION,
-                         json.dumps({"calls": 1, "seen": {},
-                                     "written": list(paths)}))
+                         json.dumps({"calls": 1, "injected_rules": {},
+                                     "unverified_writes": list(paths)}))
 
     def verify(self, cwd=None, session=None):
         """The Stop hook's answer, as JSON — {} when it stayed silent."""
@@ -100,7 +100,7 @@ class RuleWrittenThisSessionTest(VerifyEdgeCaseTestCase):
     def test_a_write_into_the_rules_directory_is_recorded(self):
         self.write_tool(self.rule_path)
         self.assertIn(self.rule_path, self.state()["rules_written"])
-        self.assertEqual(self.state()["written"], [],
+        self.assertEqual(self.state()["unverified_writes"], [],
                          "a rule file is not a write anything verifies")
 
     def test_the_verify_it_carries_does_not_run_this_session(self):
@@ -147,8 +147,9 @@ class RuleWrittenThisSessionTest(VerifyEdgeCaseTestCase):
                       args=("--reset-session",))
         state = self.state()
         self.assertIn(self.rule_path, state["rules_written"])
-        self.assertEqual(state["written"], [], "the turn's writes are gone")
-        self.assertEqual(state["seen"], {}, "and so is the dedup")
+        self.assertEqual(state["unverified_writes"], [],
+                         "the turn's writes are gone")
+        self.assertEqual(state["injected_rules"], {}, "and so is the dedup")
         self.write_tool(self.source())
         self.assertIn("written by this session", self.verify()["systemMessage"])
 

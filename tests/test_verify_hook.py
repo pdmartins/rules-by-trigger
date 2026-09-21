@@ -51,7 +51,8 @@ class VerifyHookTest(util.SandboxTestCase):
         paths = [os.path.join(self.proj, rel).replace(os.sep, "/")
                  for rel in relatives]
         util.write_state(self.home, self.SESSION,
-                         json.dumps({"calls": 1, "seen": {}, "written": paths}))
+                         json.dumps({"calls": 1, "injected_rules": {},
+                                     "unverified_writes": paths}))
         return paths
 
     def verify(self, cwd=None):
@@ -98,8 +99,9 @@ class VerifyHookTest(util.SandboxTestCase):
         self.assertIn(FAILING, reason, "the command itself")
         self.assertIn("exit code 3", reason)
         self.assertIn("boom", reason, "the tail of what it printed")
-        self.assertEqual(util.read_state(self.home, self.SESSION)["written"], [],
-                         "the writes were consumed by this verification")
+        self.assertEqual(
+            util.read_state(self.home, self.SESSION)["unverified_writes"], [],
+            "the writes were consumed by this verification")
 
     def test_a_passing_command_only_tells_the_user(self):
         util.write_rule(self.proj, "CONV_src.md", "src/**", "Rule.",
@@ -157,8 +159,9 @@ class VerifyHookTest(util.SandboxTestCase):
                         f"{other}/**".replace(os.sep, "/"), "Global.",
                         extra_frontmatter=[f"verify: {marker_command()}"])
         util.write_state(self.home, self.SESSION, json.dumps(
-            {"calls": 1, "seen": {},
-             "written": [os.path.join(other, "a.py").replace(os.sep, "/")]}))
+            {"calls": 1, "injected_rules": {},
+             "unverified_writes":
+                 [os.path.join(other, "a.py").replace(os.sep, "/")]}))
         util.run_hook(stop_payload(self.SESSION, self.proj), self.home,
                       args=("--verify",))
         self.assertEqual(self.marker(), "x")
@@ -229,9 +232,10 @@ class VerifyHookTest(util.SandboxTestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertEqual(proc.stdout.strip(), "")
         self.assertEqual(self.marker(), "")
-        self.assertEqual(util.read_state(self.home, self.SESSION)["written"],
-                         [os.path.join(self.proj, "src/a.py")],
-                         "and the writes are still there to verify")
+        self.assertEqual(
+            util.read_state(self.home, self.SESSION)["unverified_writes"],
+            [os.path.join(self.proj, "src/a.py")],
+            "and the writes are still there to verify")
 
     def test_a_written_path_whose_project_vanished_is_skipped(self):
         util.write_rule(self.proj, "CONV_src.md", "src/**", "Rule.",

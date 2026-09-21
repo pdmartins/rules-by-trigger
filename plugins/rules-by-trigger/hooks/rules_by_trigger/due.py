@@ -1,5 +1,6 @@
 """When an already-delivered rule is due to be sent again, how a delivery is
-keyed in `seen`, and the cleanup of the entry a rule edit leaves behind.
+keyed in `injected_rules`, and the cleanup of the entry a rule edit leaves
+behind.
 
 Split out of `state.py`, which owns the file on disk; this module owns the
 questions the scheduler asks of what that file holds. The first two moved here
@@ -8,27 +9,29 @@ ceiling."""
 
 import os
 
-from .constants import AGENT_KEY_PREFIX, DEFAULT_REMEMBER_AGAIN_CALLS
+from .constants import (AGENT_KEY_PREFIX, DEFAULT_REMEMBER_AGAIN_CALLS,
+                        MAX_INJECTED_RULES, warn)
 
 
 def agent_key_prefix(payload):
-    """What every `seen` key of this tool call starts with: "" in the main
-    conversation, `agent::<agent_id>::` inside a subagent.
+    """What every `injected_rules` key of this tool call starts with: "" in
+    the main conversation, `agent::<agent_id>::` inside a subagent.
 
-    `seen` answers "is this rule already in the context that will read this
-    injection?". A subagent starts from an empty context of its own, yet shares
-    the main conversation's `session_id`: keyed by session alone, a rule the
-    main conversation had received never reached a subagent touching the same
-    file. Claude Code sets `agent_id` only on a hook call made inside a
-    subagent, one id per subagent — exactly the boundary of a context.
+    `injected_rules` answers "is this rule already in the context that will
+    read this injection?". A subagent starts from an empty context of its own,
+    yet shares the main conversation's `session_id`: keyed by session alone, a
+    rule the main conversation had received never reached a subagent touching
+    the same file. Claude Code sets `agent_id` only on a hook call made inside
+    a subagent, one id per subagent — exactly the boundary of a context.
 
     A prefix inside the one state file, rather than a state file per agent,
-    keeps `calls`, `written` and `rules_written` shared: a subagent's writes are
-    verified by the main conversation's `Stop` hook, which reads them from that
-    file. A prefix rather than a suffix keeps `pop_superseded_entries` from
-    matching another context's entries. What it does not separate is the token
-    count: `transcript_path` is the main conversation's even inside a subagent,
-    so a token distance for a subagent's delivery measures the main context.
+    keeps `calls`, `unverified_writes` and `rules_written` shared: a
+    subagent's writes are verified by the main conversation's `Stop` hook,
+    which reads them from that file. A prefix rather than a suffix keeps
+    `pop_superseded_entries` from matching another context's entries. What it
+    does not separate is the token count: `transcript_path` is the main
+    conversation's even inside a subagent, so a token distance for a
+    subagent's delivery measures the main context.
 
     `agent_id` arrives as JSON from another process: anything but a non-empty
     string counts as the main conversation, as every call did before."""
@@ -39,17 +42,19 @@ def agent_key_prefix(payload):
 
 
 def rule_key_prefix(agent_prefix, scope_dir, name):
-    """Every `seen` key of one rule in one context, up to its content hash."""
+    """Every `injected_rules` key of one rule in one context, up to its
+    content hash."""
     return f"{agent_prefix}{os.path.realpath(scope_dir)}::{name}::"
 
 
-def pop_superseded_entries(seen, scope_dir, name, digest, agent_prefix=""):
-    """Remove and report whether `seen` held an entry for this same rule — same
-    scope directory and name — under a DIFFERENT content hash. A hit means the
-    rule was edited since that entry was recorded: the dedup key hashes the
-    body, so the new text is injected on its own regardless, but the earlier
-    wording stays in the transcript as a stale, contradictory instruction
-    unless something clears it out. This is that cleanup.
+def pop_superseded_entries(injected_rules, scope_dir, name, digest,
+                           agent_prefix=""):
+    """Remove and report whether `injected_rules` held an entry for this same
+    rule — same scope directory and name — under a DIFFERENT content hash. A
+    hit means the rule was edited since that entry was recorded: the dedup key
+    hashes the body, so the new text is injected on its own regardless, but
+    the earlier wording stays in the transcript as a stale, contradictory
+    instruction unless something clears it out. This is that cleanup.
 
     Only called once the caller has committed to injecting this delivery, so
     an edit that gets deferred (the char budget was full this call, say) is
@@ -67,10 +72,38 @@ def pop_superseded_entries(seen, scope_dir, name, digest, agent_prefix=""):
     """
     prefix = rule_key_prefix(agent_prefix, scope_dir, name)
     current_key = prefix + digest
-    stale = [key for key in seen if key.startswith(prefix) and key != current_key]
+    stale = [key for key in injected_rules
+             if key.startswith(prefix) and key != current_key]
     for key in stale:
-        del seen[key]
+        del injected_rules[key]
     return bool(stale)
+
+
+def trim_injected_rules(injected_rules, cap=MAX_INJECTED_RULES):
+    """Drop the oldest entries of `injected_rules` in place until at most
+    `cap` remain.
+
+    A key recorded inside a subagent carries an `agent::<agent_id>::` prefix
+    (see `agent_key_prefix`), and nothing clears a finished subagent's entries
+    on its own — not until /clear, a compaction, or the 14-day stale sweep —
+    while the whole state file is rewritten on every single tool call. Left
+    unbounded, a session running many subagents would grow this map without
+    limit until then.
+
+    "Oldest" is the entry with the lowest call number (entry[0]; entries are
+    already coerced to [calls, tokens, reinjections]); ties go to whichever
+    was inserted first, which a stable sort over dict keys gives for free.
+    Dropping errs in the direction this hook already favours: a dropped rule
+    no longer counts as delivered, so it is injected again, once, the next
+    time it matches — a duplicate at worst, never a rule withheld."""
+    if len(injected_rules) <= cap:
+        return
+    oldest_first = sorted(injected_rules, key=lambda key: injected_rules[key][0])
+    for key in oldest_first[:len(injected_rules) - cap]:
+        del injected_rules[key]
+    warn(f"more than {cap} injected rules tracked this session; the oldest "
+         f"entries were dropped, so a dropped rule is injected again, once, "
+         f"the next time it matches")
 
 
 def is_due(last_seen, call_number, tokens, interval, budget):

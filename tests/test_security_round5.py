@@ -113,16 +113,18 @@ class FifthRoundTest(util.SandboxTestCase):
     # R9 — a wrong-typed `calls` must repair, not re-inject on every call.
     def test_typed_corrupt_state_is_repaired(self):
         util.write_rule(self.proj, "src.md", "src/**", "RULE BODY")
-        util.write_state(self.home, "typed", '{"calls": "garbage", "seen": {}}')
+        util.write_state(self.home, "typed",
+                         '{"calls": "garbage", "injected_rules": {}}')
         self.assertIsNotNone(self.inject(session="typed"))
         self.assertIsNone(self.inject(session="typed"),
                           "the repaired state must dedup on the next call")
 
-    # R10 — a wrong-typed `seen` value must not disable all injection.
+    # R10 — a wrong-typed `injected_rules` value must not disable all injection.
     def test_bad_seen_value_does_not_disable_injection(self):
         util.write_rule(self.proj, "src.md", "src/**", "RULE BODY")
         util.write_state(self.home, "dark",
-                         '{"calls": 30, "seen": {"whatever": "2026-08-16T10:00:00"}}')
+                         '{"calls": 30, "injected_rules": '
+                         '{"whatever": "2026-08-16T10:00:00"}}')
         self.assertIsNotNone(self.inject(session="dark"),
                              "a bad seen value must not abort the whole injection")
 

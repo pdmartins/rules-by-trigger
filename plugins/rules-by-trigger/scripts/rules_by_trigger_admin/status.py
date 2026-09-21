@@ -154,19 +154,22 @@ def newest_state_file():
 
 def repeat_report():
     """Which unit the repeat distance is being measured in, taken from the
-    most recent session state: a `seen` entry holds [call number, context
-    tokens, reinjections], and a null second slot means the transcript could
-    not be read, so distance fell back to counting tool calls."""
+    most recent session state: an `injected_rules` entry holds [call number,
+    context tokens, reinjections], and a null second slot means the
+    transcript could not be read, so distance fell back to counting tool
+    calls."""
     override = os.environ.get(HOOK.REMEMBER_AGAIN_ENV_VAR)
     state_file = newest_state_file()
     unit = None
     if state_file:
         try:
             data = json.loads(read_regular_file(state_file, MAX_STATE_BYTES))
-            seen = data.get("seen") if isinstance(data, dict) else None
+            injected_rules = (data.get("injected_rules")
+                              if isinstance(data, dict) else None)
         except (OSError, ValueError):
-            seen = None
-        entries = [HOOK.coerce_seen_entry(value) for value in (seen or {}).values()]
+            injected_rules = None
+        entries = [HOOK.coerce_seen_entry(value)
+                  for value in (injected_rules or {}).values()]
         entries = [entry for entry in entries if entry is not None]
         if entries:
             unit = UNIT_TOKENS if any(e[1] is not None for e in entries) else UNIT_CALLS

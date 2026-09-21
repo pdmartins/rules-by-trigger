@@ -25,7 +25,8 @@ class VerifyStatsTest(util.SandboxTestCase):
         paths = [os.path.join(self.proj, rel).replace(os.sep, "/")
                  for rel in relatives]
         util.write_state(self.home, self.SESSION,
-                         json.dumps({"calls": 1, "seen": {}, "written": paths}))
+                         json.dumps({"calls": 1, "injected_rules": {},
+                                     "unverified_writes": paths}))
 
     def verify(self):
         proc = util.run_hook({"session_id": self.SESSION, "cwd": self.proj,

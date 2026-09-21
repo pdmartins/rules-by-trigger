@@ -109,8 +109,8 @@ class SubagentDedupEndToEndTest(util.SandboxTestCase):
         self.write_api_rule()
         self.inject_as(FIRST_AGENT, tool="Write")
         target = os.path.normpath(os.path.join(self.proj, self.TOUCHED))
-        written = util.read_state(self.home, SESSION)["written"]
-        self.assertEqual(written, [target.replace(os.sep, "/")])
+        unverified_writes = util.read_state(self.home, SESSION)["unverified_writes"]
+        self.assertEqual(unverified_writes, [target.replace(os.sep, "/")])
 
 
 if __name__ == "__main__":

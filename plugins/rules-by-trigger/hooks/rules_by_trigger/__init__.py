@@ -96,7 +96,8 @@ from .constants import (ADMIN_COMMAND, AGENT_KEY_PREFIX, BRAZILIAN_PORTUGUESE,
                         MAX_ANCESTOR_STEPS, MAX_CONFIG_BYTES,
                         MAX_CONFIGURABLE_REINJECT_BUDGET,
                         MAX_FRONTMATTER_BYTES, MAX_GLOB_CHARS,
-                        MAX_GLOBS_PER_RULE, MAX_LANGUAGE_CHARS,
+                        MAX_GLOBS_PER_RULE, MAX_INJECTED_RULES,
+                        MAX_LANGUAGE_CHARS,
                         MAX_REINJECTIONS_PER_RULE,
                         MAX_RULE_CHARS, MAX_RULE_NAME_CHARS, MAX_RULE_TYPES,
                         MAX_RULES_PER_SCOPE, MAX_RULES_WRITTEN, MAX_SCOPES,
@@ -167,7 +168,7 @@ from .state import (cleanup_stale_state, close_state,
                     coerce_seen_entry, context_size, detect_context_regression,
                     is_due, lock_exclusive, open_state, pop_superseded_entries,
                     save_state, state_dir, state_file_for)
-from .due import agent_key_prefix, rule_key_prefix
+from .due import agent_key_prefix, rule_key_prefix, trim_injected_rules
 from .stats import (load_stats, matched_dir, record_injections,
                     record_verifications, rule_key, stats_path, update_stats)
 from .written import (coerce_written, record_rules_written, record_written,

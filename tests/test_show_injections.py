@@ -99,10 +99,12 @@ class PreToolUseOutputTest(unittest.TestCase):
         self.assertEqual(on["hookSpecificOutput"]["additionalContext"],
                          off["hookSpecificOutput"]["additionalContext"])
 
-    def test_suppress_output_and_hook_event_name_are_unchanged(self):
+    def test_no_suppress_output_and_hook_event_name_is_unchanged(self):
+        """`suppressOutput` is documented by Claude Code as having no effect,
+        so the payload does not carry it."""
         output = HOOK.build_pretooluse_output([rule_block("CONV_api.md")],
                                               EN, False, True)
-        self.assertIs(output["suppressOutput"], True)
+        self.assertNotIn("suppressOutput", output)
         self.assertEqual(output["hookSpecificOutput"]["hookEventName"],
                          "PreToolUse")
 

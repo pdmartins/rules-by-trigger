@@ -31,6 +31,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
   one session: a session already open when the update lands injects its rules
   once more and does not verify the writes it made before the update in that
   turn.
+- The PreToolUse payload no longer sends `suppressOutput`. Claude Code
+  documents the field as having no effect and never shows a successful hook's
+  stdout in the transcript.
 
 ### Removed
 

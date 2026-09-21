@@ -81,7 +81,6 @@ def build_pretooluse_output(blocks, messages, in_subagent, show_injections):
             "hookEventName": "PreToolUse",
             "additionalContext": build_context(blocks, messages),
         },
-        "suppressOutput": True,
     }
     if show_injections:
         notice = build_notice_line(blocks, messages, in_subagent)

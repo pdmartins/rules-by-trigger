@@ -19,6 +19,10 @@ or `config.json`.
   session-wide default lives in `config.json` and `rules-by-trigger config` prints
   it. `remember_again_after:` in a rule's frontmatter overrides everything, and
   `RULES_BY_TRIGGER_REMEMBER_AGAIN_AFTER` overrides it for one session.
+- The record of what each context already received keeps at most 512 entries,
+  oldest out first. A rule whose entry drops out is injected once more the next
+  time its glob matches: a duplicate, never a rule withheld. Only a session
+  that runs many subagents gets near the cap.
 - There is no short form of a repeat: with no header there is no way to mark a
   fragment as one, so the whole body is resent. **A short rule is therefore a
   cheap rule** — this is the practical reason to keep one constraint per file.

@@ -6,7 +6,7 @@ import time
 from .constants import (FILE_PATH_KEYS, MATCH_BUDGET_SECONDS,
                         RULES_DIR_RELPATH, TOOL_KIND_READ, TOOL_KIND_WRITE,
                         WRITE_TOOL_NAMES, warn)
-from .frontmatter import excludes_of, globs_of, tools_of
+from .frontmatter import calls_of, excludes_of, globs_of, tools_of
 from .globbing import glob_matches
 from .rules import has_legacy_map, scope_index
 
@@ -175,4 +175,44 @@ def collect_candidates(abs_path, real_abs, scopes, tool_name=None,
     if budget_hit:
         warn(f"glob matching exceeded its {per_scope:.2f}s per-scope budget; the "
              f"remaining rules of that scope were skipped for this tool call")
+    return candidates, legacy
+
+
+def call_trigger_of(fields, tool_name, tool_input):
+    """The `text` of the first call trigger this rule declares that matches
+    this tool call, or None.
+
+    Match: `tool_name == Tool` AND `tool_input[field]` is a `str` whose
+    stripped value equals `value` — exact and case-sensitive, unlike a path
+    rule's glob. `exclude`/`tool`/`block`/`verify` only concern PATH matching
+    (see the frontmatter contract) and are deliberately never consulted here."""
+    for text, tool, field, value in calls_of(fields):
+        if tool != tool_name:
+            continue
+        candidate = tool_input.get(field)
+        if isinstance(candidate, str) and candidate.strip() == value:
+            return text
+    return None
+
+
+def collect_call_candidates(tool_name, tool_input, scopes):
+    """(candidates, legacy_scope_labels) for a tool call — `collect_candidates`'s
+    twin for a `call:` trigger instead of a touched path. Same candidate
+    shape, (scope_dir, label, name, trigger_text, fields), with the trigger
+    text sitting in the slot a path candidate's matched glob occupies
+    (provenance for the terminal notice and the usage stats); same scope
+    order (`find_scopes`'s) and rule order (`scope_index`'s).
+
+    No matching budget: a `call:` grammar is a handful of exact string
+    comparisons per rule, not a glob walk over an attacker-sized pattern, so
+    there is nothing here a hostile scope could make run away."""
+    candidates = []
+    legacy = []
+    for _base_dir, scope_dir, label in scopes:
+        if has_legacy_map(scope_dir):
+            legacy.append(label)
+        for name, fields in scope_index(scope_dir):
+            trigger_text = call_trigger_of(fields, tool_name, tool_input)
+            if trigger_text is not None:
+                candidates.append((scope_dir, label, name, trigger_text, fields))
     return candidates, legacy

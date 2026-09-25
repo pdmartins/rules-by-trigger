@@ -74,6 +74,8 @@ Layout — one concern per module, none over 400 lines:
     verify.py       the Stop hook: which `verify:` commands a turn owes
     verifyrun.py    running one of them, and the tail of what it printed
     verifyreport.py what comes back: the block reason, and the user's line
+    injection.py    turning matched candidates into a delivery, shared by
+                    the path branch and the call branch of `main()`
     main.py         the four entry points Claude Code calls
 
 This module re-exports the surface the admin CLI and the test suite import.
@@ -83,6 +85,7 @@ address the hook by that path.
 """
 
 from .constants import (ADMIN_COMMAND, AGENT_KEY_PREFIX, BRAZILIAN_PORTUGUESE,
+                        CALL_TRIGGER_TOOLS,
                         CLAUDE_DIR_NAME, CONFIG_FILE_NAME, DEFAULT_LANGUAGE,
                         DEFAULT_REMEMBER_AGAIN_CALLS,
                         DEFAULT_REMEMBER_AGAIN_TOKENS,
@@ -146,10 +149,13 @@ from .messages import (ENFORCE_DENY_REASON_TEMPLATE_KEY,
                        canonical_language,
                        has_translation, messages_for, normalize_language,
                        sanitize_language)
-from .frontmatter import (BLOCK_KEY, BLOCK_TRUE_VALUES, EXCLUDE_KEYS,
+from .frontmatter import (BLOCK_KEY, BLOCK_TRUE_VALUES, CALL_KEYS,
+                          CALL_TRIGGER_RE, EXCLUDE_KEYS,
                           GLOB_KEYS, LEGACY_BLOCK_KEY, LEGACY_BLOCK_VALUE,
-                          TOOL_KEYS, block_of, declared_values, excludes_of,
-                          first_value, glob_list, globs_of, parse_frontmatter,
+                          TOOL_KEYS, block_of, call_values_of, calls_of,
+                          declared_values, excludes_of,
+                          first_value, glob_list, globs_of, parse_call_trigger,
+                          parse_frontmatter,
                           parse_remember_again_after, parse_size,
                           remember_again_after_of, tool_values_of, tools_of,
                           unquote, verify_of)
@@ -165,9 +171,10 @@ from .globbing import (glob_matches, glob_matches_path, match_path,
                        match_segment)
 from .discovery import (find_scopes, global_scope, is_safely_owned,
                         scope_is_contained, usable_scope)
-from .rules import (derive_rule_name, has_legacy_map, is_valid_rule_name,
-                    read_rule_file, scope_index)
-from .matching import (applied_glob, collect_candidates, extract_file_path,
+from .rules import (derive_call_rule_name, derive_rule_name, has_legacy_map,
+                    is_valid_rule_name, read_rule_file, scope_index)
+from .matching import (applied_glob, call_trigger_of, collect_call_candidates,
+                       collect_candidates, extract_file_path,
                        first_matching_glob, is_inside_rules_dir, path_targets,
                        tool_allows, tool_kind)
 from .state import (cleanup_stale_state, close_state,
@@ -189,5 +196,6 @@ from .verifyrun import (CommandResult, DID_NOT_RUN_STATUSES, STATUS_ERROR,
 from .verifyreport import build_report, build_system_message, status_line
 from .verify import (VerifyJob, collect_jobs, job_cwd,
                      run_jobs, scope_order, take_turn_writes, verify_turn)
-from .main import (build_blocks, cli, config_for_scopes, blocking_rule, main,
+from .injection import build_blocks, config_for_scopes, deliver, over_budget
+from .main import (blocking_rule, cli, inject_for_call, main,
                    messages_for_scopes, reset_session, session_notice)

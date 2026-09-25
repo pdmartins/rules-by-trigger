@@ -21,6 +21,16 @@ FILE_PATH_KEYS = ("file_path", "notebook_path", "path")
 # The only tools `block: true` ever acts on. Read/Grep never write, so a
 # blocking rule has nothing to stop them from doing.
 WRITE_TOOL_NAMES = ("Write", "Edit", "MultiEdit", "NotebookEdit")
+# The tools a `call:` trigger may name. The PreToolUse matcher in
+# `hooks/hooks.json` registers these on top of the five file tools, and
+# mirrors this tuple by hand because JSON cannot import a Python constant — a
+# test asserts the two still agree. `main()` only ever runs the call branch
+# for a tool named here (see `main.main`), and the harness never calls the
+# hook at all for a tool the matcher does not list — so a `call:` naming any
+# other tool can never fire, from either side of that gate. `call_trigger_of`
+# itself does not enforce this: it simply never sees a call for a tool this
+# tuple excludes.
+CALL_TRIGGER_TOOLS = ("Skill",)
 # The two kinds of tool call a rule's `tool:` filter can name. The hook only
 # ever runs for the five file tools, so everything that is not a write is a
 # read — there is no third kind to grow into.

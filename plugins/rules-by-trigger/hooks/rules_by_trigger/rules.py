@@ -9,7 +9,7 @@ import unicodedata
 from .constants import (LEGACY_MAP_NAME, MAX_FRONTMATTER_BYTES,
                         MAX_RULE_CHARS, MAX_RULE_NAME_CHARS,
                         MAX_RULES_PER_SCOPE, RULE_NAME_EXTRA_CHARS, warn)
-from .frontmatter import parse_frontmatter
+from .frontmatter import parse_call_trigger, parse_frontmatter
 
 
 def derive_rule_name(glob):
@@ -43,6 +43,24 @@ def derive_rule_name(glob):
         words.append(segment)
     name = re.sub(r"[^a-z0-9]+", "-", "-".join(words).lower()).strip("-")
     return (name or "root") + ".md"
+
+def derive_call_rule_name(text):
+    """Default rule filename for a call-only rule when `--rule` is not given
+    — `derive_rule_name`'s twin for a `call:` trigger instead of a `glob:`.
+
+        Skill(skill=workflow-authoring) -> skill-workflow-authoring.md
+
+    Tool and value, lowercased, non-alphanumerics collapsed to `-`, exactly
+    like `derive_rule_name`'s treatment of a glob's segments. A total
+    function: a trigger `parse_call_trigger` cannot read still yields a
+    usable name rather than failing the rule's creation over a naming
+    detail."""
+    parsed = parse_call_trigger(text)
+    if parsed is None:
+        return "call.md"
+    tool, _field, value = parsed
+    name = re.sub(r"[^a-z0-9]+", "-", f"{tool}-{value}".lower()).strip("-")
+    return (name or "call") + ".md"
 
 def is_valid_rule_name(rule_name):
     """A rule name must be a bounded `*.md` file name built only from letters,

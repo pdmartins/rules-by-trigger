@@ -72,6 +72,10 @@ def bump_bounded(counter, key, cap):
 
 
 def record_entry(entry, session_id, now, directory, glob, repeat):
+    """`directory` is None for a call trigger — there is no touched file to
+    place under a folder — and then the `dirs` counter is simply left alone;
+    everything else is recorded exactly as for a path trigger, including the
+    `globs` counter, which holds the call's trigger text instead of a glob."""
     entry["injections"] += 1
     if repeat:
         entry["reinjections"] += 1
@@ -81,7 +85,8 @@ def record_entry(entry, session_id, now, directory, glob, repeat):
         entry["sessions"] += 1
         entry["recent_sessions"].append(session_id)
         del entry["recent_sessions"][:-MAX_STATS_RECENT_SESSIONS]
-    bump_bounded(entry["dirs"], directory, MAX_STATS_DIRS_PER_RULE)
+    if directory is not None:
+        bump_bounded(entry["dirs"], directory, MAX_STATS_DIRS_PER_RULE)
     if glob:
         bump_bounded(entry["globs"], glob, MAX_STATS_GLOBS_PER_RULE)
 
@@ -171,7 +176,12 @@ def update_stats(apply):
 
 def record_injections(session_id, deliveries, abs_path):
     """Count one injection per delivered rule. `deliveries` is
-    [(scope_dir, base_dir, name, glob, repeat)], in the order they were sent."""
+    [(scope_dir, base_dir, name, glob, repeat)], in the order they were sent.
+
+    `abs_path` is None for a call trigger (see `main.inject_for_call`): there
+    is no touched file, so `matched_dir` — which would crash on
+    `os.path.dirname(None)` — is never called; `record_entry` then leaves the
+    `dirs` counter alone and records everything else as usual."""
     if not deliveries:
         return
 
@@ -179,8 +189,8 @@ def record_injections(session_id, deliveries, abs_path):
         now = int(time.time())
         for scope_dir, base_dir, name, glob, repeat in deliveries:
             entry = stats["rules"].setdefault(rule_key(scope_dir, name), empty_entry())
-            record_entry(entry, session_id, now, matched_dir(abs_path, base_dir),
-                         glob, repeat)
+            directory = matched_dir(abs_path, base_dir) if abs_path is not None else None
+            record_entry(entry, session_id, now, directory, glob, repeat)
 
     update_stats(apply)
 

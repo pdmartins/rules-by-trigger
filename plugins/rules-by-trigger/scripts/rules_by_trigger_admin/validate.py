@@ -9,10 +9,16 @@ import sys
 
 from .common import (BLOCK_KEY, EXCLUDE_KEY, HOOK, INTERVAL_KEY,
                      LEGACY_BLOCK_KEY, LEGACY_INTERVAL_KEY, LEGACY_MAP_NAME,
-                     OWN_KEYS, TOOL_KEY, VERIFY_KEY, other_markdown_in,
-                     rules_in, scope_for)
+                     OWN_KEYS, TOOL_KEY, VERIFY_KEY, call_problem,
+                     other_markdown_in, rules_in, scope_for)
 from .config import TYPE_SEPARATOR, config_for, name_convention, split_type_prefix
 from .splitting import split_candidates
+
+# The keys that only ever narrow a PATH trigger — declared on a rule with
+# calls and no glob, they are dead weight rather than a mistake: `validate`
+# says so as a note, not an error, because the rule still fires on its calls.
+IRRELEVANT_ON_CALL_ONLY_KEYS = (set(HOOK.EXCLUDE_KEYS) | set(HOOK.TOOL_KEYS)
+                                | {BLOCK_KEY, LEGACY_BLOCK_KEY, VERIFY_KEY})
 
 # Case-insensitive: a rule stating a prohibition needs the opposite
 # reinforcement default from one stating a requirement or convention — only
@@ -246,11 +252,23 @@ def scope_findings(scope_dir, anchor=None, config=None, is_global=False):
     total = 0
     for name, fields, body in rules:
         globs = HOOK.globs_of(fields)
+        calls = HOOK.call_values_of(fields)
         excludes = HOOK.excludes_of(fields)
-        if not globs:
-            problems.append(f"{name}: no glob declared, so it can never be injected")
+        if not globs and not calls:
+            problems.append(f"{name}: no glob and no call declared, so it can "
+                            f"never be injected")
         problems.extend(f"{name}: {reason}"
                         for reason in filter_problems(globs, excludes))
+        for value in calls:
+            problem = call_problem(value)
+            if problem:
+                problems.append(f"{name}: {problem}")
+        if calls and not globs:
+            irrelevant = sorted(set(fields) & IRRELEVANT_ON_CALL_ONLY_KEYS)
+            if irrelevant:
+                notes.append(f"{name}: {', '.join(irrelevant)} only applies to "
+                             f"a path trigger ({HOOK.GLOB_KEYS[0]}:); it has no "
+                             f"effect on this call-only rule")
         for glob in globs:
             by_glob.setdefault(glob, []).append(name)
         if not body:

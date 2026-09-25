@@ -151,8 +151,13 @@ def cmd_move(args):
     rewrite.source_root = source_anchor
     globs = rewrite_all(HOOK.globs_of(fields), HOOK.GLOB_KEYS[0], rewrite)
     excludes = rewrite_all(HOOK.excludes_of(fields), HOOK.EXCLUDE_KEYS[0], rewrite)
-    if not globs:
-        fail(f"{name} declares no glob; give it one with `update --glob` before moving")
+    # A call trigger is not path-shaped — nothing about it changes with the
+    # scope — so it rides along verbatim, the same way `preserved_fields`
+    # carries any other setting the move does not touch.
+    calls = HOOK.call_values_of(fields)
+    if not globs and not calls:
+        fail(f"{name} declares neither a glob nor a call; give it one with "
+             f"`update --glob`/`--call` before moving")
 
     source_language = HOOK.language(config_for(args))
     dest_language = HOOK.language(dest_config)
@@ -161,7 +166,8 @@ def cmd_move(args):
         [after for _before, after in globs], body, submitted_interval(fields),
         preserved_fields(fields, owned_last=True),
         excludes=[after for _before, after in excludes],
-        tool=HOOK.tools_of(fields), verify=HOOK.verify_of(fields)))
+        tool=HOOK.tools_of(fields), verify=HOOK.verify_of(fields),
+        calls=calls))
     os.unlink(source_path)
 
     source_label = "global" if args.use_global else f"project {source_anchor}"

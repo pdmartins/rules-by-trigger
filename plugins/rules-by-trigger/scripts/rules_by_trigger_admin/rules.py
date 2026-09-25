@@ -7,15 +7,17 @@ the only moment in the whole system when a human is present to choose it."""
 import os
 import sys
 
-from .common import (EXCLUDE_KEY, GLOB_KEY, HOOK, INTERVAL_KEY,
+from .common import (CALL_KEY, EXCLUDE_KEY, GLOB_KEY, HOOK, INTERVAL_KEY,
                      LEGACY_INTERVAL_KEY, MAX_ECHOED_NAME_CHARS, RENDERED_KEYS,
-                     TOOL_KEY, VERIFY_KEY, atomic_write, check_glob,
-                     check_line_value, existing_is_not_a_rule,
+                     TOOL_KEY, VERIFY_KEY, atomic_write, check_call,
+                     check_glob, check_line_value, existing_is_not_a_rule,
                      existing_rule_path, fail, other_markdown_in,
                      preserved_fields, rule_path, rules_in, scope_for, warn,
                      warn_if_long)
 from .config import (TYPE_SEPARATOR, check_remember_again_after, config_for,
                      resolve_type)
+from .describe import (calls_for, describe_filters, describe_verify,
+                       filters_label, triggers_label)
 from .validate import filter_problems, validate_scope
 
 
@@ -26,12 +28,15 @@ def split_submitted(text):
     update as the way to change a rule, so stdin routinely arrives WITH the
     frontmatter still attached. Treating it as body text nests one frontmatter
     inside another and the rule stops matching. The block is consumed when it
-    declares a `glob`/`globs` key — the unmistakable signature of this plugin's
-    own frontmatter — so a rule carrying an extra key the admin preserves (e.g.
-    `owner:`) round-trips cleanly, while a body that legitimately starts with
-    `---` (which has no glob key) is left alone."""
+    declares a `glob`/`globs`/`call`/`calls` key — the unmistakable signature
+    of this plugin's own frontmatter — so a rule carrying an extra key the
+    admin preserves (e.g. `owner:`) round-trips cleanly, while a body that
+    legitimately starts with `---` (which has none of those keys) is left
+    alone. A call-only rule (no `glob:` at all) needs `call`/`calls` in this
+    check too, or its own show -> edit -> update round trip would nest its
+    frontmatter instead of replacing it."""
     fields, body = HOOK.parse_frontmatter(text)
-    if fields and ("glob" in fields or "globs" in fields):
+    if fields and any(key in fields for key in (*HOOK.GLOB_KEYS, *HOOK.CALL_KEYS)):
         return body.strip(), fields
     return text.strip(), {}
 
@@ -46,7 +51,7 @@ def list_lines(key, values, check):
 
 
 def render_rule(globs, body, remember_again_after=None, extra=None,
-                excludes=None, tool=None, verify=None):
+                excludes=None, tool=None, verify=None, calls=None):
     # The hook ignores globs past MAX_GLOBS_PER_RULE and reads only
     # MAX_FRONTMATTER_BYTES to find the closing `---`, so a rule this tool writes
     # beyond either limit would be one the hook silently never injects. Refuse to
@@ -54,7 +59,9 @@ def render_rule(globs, body, remember_again_after=None, extra=None,
     excludes = list(excludes or [])
     tool = list(tool or [])
     verify = list(verify or [])
-    for label, patterns in ((GLOB_KEY, globs), (EXCLUDE_KEY, excludes)):
+    calls = list(calls or [])
+    for label, patterns in ((GLOB_KEY, globs), (EXCLUDE_KEY, excludes),
+                            (CALL_KEY, calls)):
         if len(patterns) > HOOK.MAX_GLOBS_PER_RULE:
             fail(f"a rule may declare at most {HOOK.MAX_GLOBS_PER_RULE} "
                  f"{label} patterns (got {len(patterns)}); split it into "
@@ -78,7 +85,13 @@ def render_rule(globs, body, remember_again_after=None, extra=None,
         fail(f"{reason} — pass --{EXCLUDE_KEY} with a narrower pattern, or "
              f"drop it")
     lines = ["---"]
-    lines.extend(list_lines(GLOB_KEY, globs, check_glob))
+    # A call-only rule carries no bare `glob:` line at all — writing one with
+    # nothing under it would read as "matches no path", when the truth is
+    # "this rule is not reached by a path at all".
+    if globs:
+        lines.extend(list_lines(GLOB_KEY, globs, check_glob))
+    if calls:
+        lines.extend(list_lines(CALL_KEY, calls, check_call))
     # The filters go next to the glob they narrow, and before the schedule:
     # what a rule applies to is read together, in the order it is decided.
     if excludes:
@@ -153,56 +166,6 @@ def verify_for(args, source):
     return HOOK.verify_of(source)
 
 
-def describe_verify(commands):
-    """The lines `add` and `update` print under a written rule for its
-    verification, one per command and in full: what will run at the end of a
-    turn is worth reading back verbatim, and it does not fit on a shared line."""
-    return [f"    {VERIFY_KEY}: {command}" for command in commands]
-
-
-def verify_label(commands):
-    """What a `list` line says about a rule's verification: how many commands
-    there are, not what they are. An inventory is one line per rule, and a
-    single command may run to MAX_VERIFY_COMMAND_CHARS — `show` is where the
-    text belongs."""
-    if not commands:
-        return []
-    plural = "" if len(commands) == 1 else "s"
-    return [f"{VERIFY_KEY}: {len(commands)} cmd{plural}"]
-
-
-def filter_parts(excludes, tool):
-    """The filters a rule carries, one readable phrase each — assembled once so
-    every command names them the same way."""
-    parts = []
-    if excludes:
-        parts.append(f"{EXCLUDE_KEY}: {', '.join(excludes)}")
-    if tool:
-        parts.append(f"{TOOL_KEY}: {', '.join(tool)}")
-    return parts
-
-
-def describe_filters(excludes, tool):
-    """The line `add` and `update` print under a written rule, or "" when it
-    declares no filter at all."""
-    parts = filter_parts(excludes, tool)
-    return f"    {'  |  '.join(parts)}" if parts else ""
-
-
-def filters_label(fields):
-    """What a `list` line adds after the globs, or "".
-
-    An inventory that omits them hides the two reasons a rule someone is
-    looking at will not fire where its glob says it should. The tool filter is
-    reported as the hook READS it, so a value the hook ignores shows as no
-    filter — which is what it is; `validate` is where the typo is named. A
-    verification is listed in the same slot: it is not a filter, but it is the
-    other thing a rule does that its glob alone does not say."""
-    parts = filter_parts(HOOK.excludes_of(fields), HOOK.tools_of(fields))
-    parts.extend(verify_label(HOOK.verify_of(fields)))
-    return f"  [{'; '.join(parts)}]" if parts else ""
-
-
 def cmd_init(args):
     scope_dir, _ = scope_for(args)
     os.makedirs(scope_dir, exist_ok=True)
@@ -218,9 +181,7 @@ def cmd_list(args):
     if not rules:
         print("(no rules in this scope)")
     for name, fields, _body in rules:
-        globs = HOOK.globs_of(fields)
-        shown = ", ".join(globs) if globs else "(NO GLOB — never injected)"
-        print(f"{name}  <-  {shown}{filters_label(fields)}")
+        print(f"{name}  <-  {triggers_label(fields)}{filters_label(fields)}")
     others = other_markdown_in(scope_dir)
     if others:
         print(f"\n(not rules, no frontmatter: {', '.join(others)})")
@@ -253,13 +214,16 @@ def cmd_add(args):
     if not body:
         fail("empty rule content — send the markdown via stdin")
     globs = [g.strip() for g in args.glob if g.strip()] or HOOK.globs_of(submitted)
-    if not globs:
-        fail("'add' requires at least one --glob")
-    name = args.rule or HOOK.derive_rule_name(globs[0])
+    calls = calls_for(args, submitted)
+    if not globs and not calls:
+        fail("'add' requires at least one --glob or --call")
+    name = args.rule or (HOOK.derive_rule_name(globs[0]) if globs
+                         else HOOK.derive_call_rule_name(calls[0]))
     prefix, name = resolve_type(config, args.type, name)
     if not HOOK.is_valid_rule_name(name):
+        origin = globs[0] if globs else calls[0]
         source = "invalid rule name" if args.rule else \
-            f"the name derived from {globs[0]!r} is not usable"
+            f"the name derived from {origin!r} is not usable"
         fail(f"{source}: {name[:MAX_ECHOED_NAME_CHARS]!r} — pass a plain one, e.g. "
              f"--rule {prefix}{TYPE_SEPARATOR}handlers-inherit-base.md")
     path = rule_path(scope_dir, name)
@@ -283,9 +247,10 @@ def cmd_add(args):
     verify = verify_for(args, submitted)
     atomic_write(path, render_rule(globs, body, interval,
                                    preserved_fields(submitted),
-                                   excludes=excludes, tool=tool, verify=verify))
-    print(f"ok: {name}  <-  {', '.join(globs)}")
-    filters = describe_filters(excludes, tool)
+                                   excludes=excludes, tool=tool, verify=verify,
+                                   calls=calls))
+    print(f"ok: {name}  <-  {', '.join(globs)}" if globs else f"ok: {name}")
+    filters = describe_filters(excludes, tool, calls)
     if filters:
         print(filters)
     for line in describe_verify(verify):
@@ -319,8 +284,10 @@ def cmd_update(args):
     # everything the user did not deliberately change.
     globs = ([g.strip() for g in args.glob if g.strip()]
              or HOOK.globs_of(submitted) or HOOK.globs_of(fields))
-    if not globs:
-        fail(f"{args.rule} declares no glob; pass --glob to set one")
+    calls = calls_for(args, submitted or fields)
+    if not globs and not calls:
+        fail(f"{args.rule} declares no glob and no call; pass --glob or --call "
+             f"to set one")
     interval = (args.remember_again_after or submitted_interval(submitted)
                 or submitted_interval(fields) or None)
     check_remember_again_after(interval)
@@ -329,9 +296,10 @@ def cmd_update(args):
     merged = {**fields, **submitted}
     atomic_write(path, render_rule(globs, body, interval,
                                    preserved_fields(merged, owned_last=True),
-                                   excludes=excludes, tool=tool, verify=verify))
+                                   excludes=excludes, tool=tool, verify=verify,
+                                   calls=calls))
     print(f"ok: updated {args.rule}")
-    filters = describe_filters(excludes, tool)
+    filters = describe_filters(excludes, tool, calls)
     if filters:
         print(filters)
     for line in describe_verify(verify):

@@ -52,6 +52,11 @@ def main():
                        help="global scope (~/.claude/rules-by-trigger)")
     parser.add_argument("--glob", action="append", default=[],
                         help="glob the rule applies to; repeat for several")
+    parser.add_argument("--call", action="append", default=[],
+                        help="call trigger the rule fires on, written "
+                             "Tool(field=value); repeat for several. "
+                             "'none' clears them on `update`; on `which`, "
+                             "the one call to test, in place of --path")
     parser.add_argument("--exclude", action="append", default=[],
                         help="glob the rule must NOT apply to, even when a "
                              "--glob covers it; repeat for several")
@@ -128,8 +133,8 @@ def main():
              f"use {current!r}")
         args.command = current
 
-    if args.command == "add" and not args.glob:
-        fail("'add' requires --glob")
+    if args.command == "add" and not (args.glob or args.call):
+        fail("'add' requires --glob or --call")
     if args.command in ("show", "update") and not args.rule:
         fail(f"'{args.command}' requires --rule")
     if args.command == "remove":
@@ -139,8 +144,13 @@ def main():
             fail("'remove' takes --rule OR --glob, not both")
         if args.glob:
             args.glob = args.glob[0]
-    if args.command == "which" and not args.path:
-        fail("'which' requires --path")
+    if args.command == "which":
+        if not (args.path or args.call):
+            fail("'which' requires --path or --call")
+        if args.path and args.call:
+            fail("'which' takes --path OR --call, not both")
+        if len(args.call) > 1:
+            fail("'which --call' takes one call trigger; run it again for another")
     if args.command == "move":
         if not args.rule:
             fail("'move' requires --rule")
@@ -160,6 +170,12 @@ def main():
                  f"`add`, `update` and `which`")
     if args.command == "status" and args.exclude:
         fail("'status' takes no --exclude")
+    # `--call` is narrower still: `status` never took `--exclude` either, and a
+    # call trigger is never something a command merely resolves against — only
+    # the two that WRITE a rule, plus `which`'s own alternative to --path.
+    if args.call and args.command not in ("add", "update", "which"):
+        fail(f"'{args.command}' takes no --call; it belongs to `add`, "
+             f"`update` and `which`")
     # `--verify` is narrower still: it does not describe a rule, it declares
     # what one runs, so only the two commands that WRITE a rule accept it.
     if args.verify and args.command not in ("add", "update"):

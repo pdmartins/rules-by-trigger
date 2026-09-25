@@ -15,7 +15,7 @@ from types import SimpleNamespace
 
 from .common import HOOK, read_regular_file, rules_in, other_markdown_in
 from .config import cmd_config, config_for, split_type_prefix
-from .rules import filters_label
+from .describe import filters_label, triggers_label
 from .usage import (public_usage, usage_label, usage_notes, usage_of,
                     usage_since)
 from .validate import scope_findings
@@ -86,6 +86,7 @@ def rule_entry(name, fields, body, config, usage):
         "name": name,
         "type": prefix,
         "globs": HOOK.globs_of(fields),
+        "calls": HOOK.call_values_of(fields),
         "excludes": HOOK.excludes_of(fields),
         "tools": HOOK.tools_of(fields),
         "remember_again_after": raw_interval,
@@ -211,7 +212,7 @@ def print_scope(scope):
     print(LINE_SCOPE.format(label=scope["scope"], directory=scope["directory"],
                             count=len(scope["rules"])))
     for rule in scope["rules"]:
-        globs = ", ".join(rule["globs"]) if rule["globs"] else "(NO GLOB — never injected)"
+        globs = triggers_label(rule["_fields"])
         repeat = f", repeat {rule['remember_again_after']}" if rule["remember_again_after"] else ""
         label = usage_label(rule["_usage"])
         print(LINE_RULE.format(name=rule["name"], globs=globs,

@@ -180,7 +180,8 @@ def migrate_renamed_keys(scope_dir):
         if not renames:
             continue
         globs = HOOK.globs_of(fields)
-        if not globs or not body:
+        calls = HOOK.call_values_of(fields)
+        if (not globs and not calls) or not body:
             continue  # `validate` already reports these; rewriting would not help
         # Every setting `render_rule` writes from an argument has to be handed
         # back to it: the filters and `verify` are in RENDERED_KEYS, so
@@ -198,7 +199,8 @@ def migrate_renamed_keys(scope_dir):
                                    extra,
                                    excludes=HOOK.excludes_of(fields),
                                    tool=HOOK.tool_values_of(fields),
-                                   verify=HOOK.verify_of(fields))
+                                   verify=HOOK.verify_of(fields),
+                                   calls=calls)
         except AdminError as exc:
             # A rule this tool would refuse to write today (a filter that
             # cancels its own glob, say) is one `validate` reports. Renaming a

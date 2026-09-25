@@ -5,6 +5,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
+### Added
+
+- **`call:` — a rule can now fire on a tool call, not only on a file path.**
+  One trigger today: `call: Skill(skill=<name>)` reaches a rule the moment
+  Claude loads that skill, through the same delivery a matching glob gets —
+  same `additionalContext`, same once-per-session dedup, same reinjection
+  schedule, same usage stats. A rule may declare `glob`, `call`, or both,
+  ORed together and sharing one dedup key. Only `Skill` is registered as a
+  call-trigger tool; `exclude`, `tool`, `block` and `verify` stay path-only
+  and have no effect on the call side. `add`, `update` and `which` take
+  `--call 'Tool(field=value)'`, repeatable; `--call none` on `update` clears
+  it; `list`, `status` and `validate` all account for it.
+
 ## 0.8.0 — 2026-09-21
 
 ### Added

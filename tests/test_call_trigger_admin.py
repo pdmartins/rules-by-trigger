@@ -101,6 +101,19 @@ class CallTriggerAdminTest(util.SandboxTestCase):
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("no glob and no call", proc.stderr)
 
+    def test_update_call_empty_string_is_refused_not_silently_cleared(self):
+        """W3: `--call ''` used to be filtered out exactly like `--call none`,
+        silently wiping the calls of a rule the caller never asked to clear."""
+        self.add_call_only()
+        proc = self.admin("update", "--root", self.proj,
+                          "--rule", "OTHR_skill-workflow-authoring.md",
+                          "--call", "", stdin=BODY)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("--call", proc.stderr)
+        self.assertIn("none", proc.stderr)
+        content = self.read_rule("OTHR_skill-workflow-authoring.md")
+        self.assertIn(f"call: {CALL}", content)
+
     # ---- list -----------------------------------------------------------
 
     def test_list_shows_the_call(self):
@@ -150,11 +163,50 @@ class CallTriggerAdminTest(util.SandboxTestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("no effect on this call-only rule", proc.stdout)
 
+    def test_validate_does_not_suggest_block_sync_for_a_call_only_rule(self):
+        """W4: `block --sync` writes one native deny per glob; a call-only
+        rule has none, so that advice would do nothing — the irrelevant-key
+        note already says `block:` has no effect here."""
+        util.write_file(os.path.join(self.scope, "OTHR_block.md"),
+                        f"---\ncall: {CALL}\nblock: true\n---\n" + BODY + "\n")
+        proc = self.admin("validate", "--root", self.proj)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertNotIn("block --sync", proc.stdout)
+        self.assertIn("no effect on this call-only rule", proc.stdout)
+
     def test_validate_neither_glob_nor_call_is_an_error(self):
         util.write_rule(self.proj, "OTHR_orphan.md", [], BODY)
         proc = self.admin("validate", "--root", self.proj)
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("no glob and no call", proc.stderr)
+
+    def test_add_call_only_with_exclude_matching_everything_is_not_refused(self):
+        """A call-only rule fires on its call no matter what `exclude:` says
+        about paths — E1: `exclude: '**'` must not be treated as "can never
+        inject" here, only noted as inert."""
+        proc = self.add_call_only("--exclude", "**")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        content = self.read_rule("OTHR_skill-workflow-authoring.md")
+        self.assertIn(f"call: {CALL}", content)
+        self.assertIn("exclude: **", content)
+
+    def test_validate_call_only_with_exclude_everything_is_not_an_error(self):
+        util.write_file(os.path.join(self.scope, "OTHR_excl_all.md"),
+                        f"---\ncall: {CALL}\nexclude: '**'\n---\n" + BODY + "\n")
+        proc = self.admin("validate", "--root", self.proj)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("no effect on this call-only rule", proc.stdout)
+
+    def test_validate_glob_and_call_with_every_glob_excluded_is_a_note(self):
+        """A glob+call rule whose globs are all excluded still fires on its
+        call, so this is advice, not an error."""
+        util.write_file(os.path.join(self.scope, "OTHR_dead_glob.md"),
+                        f"---\nglob: src/**\ncall: {CALL}\n"
+                        f"exclude: src/**\n---\n" + BODY + "\n")
+        proc = self.admin("validate", "--root", self.proj)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("only fires on its call", proc.stdout)
+        self.assertNotIn("can never inject", proc.stdout + proc.stderr)
 
     # ---- move ---------------------------------------------------------
 
@@ -168,3 +220,13 @@ class CallTriggerAdminTest(util.SandboxTestCase):
                  encoding="utf-8") as handle:
             content = handle.read()
         self.assertIn(f"call: {CALL}", content)
+
+    def test_move_of_a_call_only_rule_suggests_which_call_not_which_path(self):
+        """W4: a call-only rule has no glob for `which --path` to probe; the
+        reach check printed after the move must exercise the call instead."""
+        self.add_call_only()
+        proc = self.admin("move", "--root", self.proj,
+                          "--rule", "OTHR_skill-workflow-authoring.md", "--to-global")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(f"which --global --call '{CALL}'", proc.stdout)
+        self.assertNotIn("--path", proc.stdout)

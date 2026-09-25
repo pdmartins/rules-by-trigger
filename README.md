@@ -219,11 +219,15 @@ no effect on the call side; on a rule with a call and no glob they do nothing
 at all, and `validate` says so rather than treating them as an error.
 
 **This is a soft guarantee.** The trigger is a real `Skill` tool call, not the
-user typing `/skill-name` — that never issues one on its own, so a rule
-waiting on it fires only once the model actually loads the skill. `call:`
-raises the odds the right guidance is in context at the right moment; it does
-not force the skill to load. See `references/calls.md` in the `manage` skill
-for the full grammar and its limits.
+user typing `/skill-name` — a slash command never issues one, so a rule
+waiting on that skill's load is never delivered when a human types it that
+way; it only fires once the model itself invokes the skill through the
+`Skill` tool. Even then the guarantee is soft in two steps: the model has to
+load the skill through the `Skill` tool, and it then has to actually read and
+follow what was injected. `call:` raises the odds the right guidance is in
+context at the right moment; it forces neither step. See
+`references/calls.md` in the `manage` skill for the full grammar and its
+limits.
 
 ## Repeating a rule
 

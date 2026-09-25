@@ -45,8 +45,11 @@ BLOCK_TO_PROJECT = ("this rule carries `block: true`: a project scope cannot "
                     "native deny entry")
 MOVED = "ok: moved {name}  {source} -> {dest}"
 REWRITTEN = "    {key}: {before!r} -> {after!r}"
-PROVE = ("check the reach: `which --{flag} --path '<a file it should govern>'` "
-         "and one it should not")
+PROVE_PATH = ("check the reach: `which --{flag} --path '<a file it should "
+             "govern>'` and one it should not")
+# A call-only rule has no glob for --path to probe — `which --call` is the
+# reach check that actually exercises it.
+PROVE_CALL = "check the reach: `which --{flag} --call '{call}'`"
 # -----------------------------------------------------------------------------
 
 
@@ -180,6 +183,9 @@ def cmd_move(args):
         warn(LANGUAGE_DIFFERS.format(dest=dest_language, source=source_language))
     if HOOK.block_of(fields):
         warn(BLOCK_TO_GLOBAL if dest.use_global else BLOCK_TO_PROJECT)
-    print(PROVE.format(flag=dest_flag))
+    if globs:
+        print(PROVE_PATH.format(flag=dest_flag))
+    else:
+        print(PROVE_CALL.format(flag=dest_flag, call=calls[0]))
     validate_scope(dest_dir, dest_anchor, quiet=True, config=dest_config,
                    is_global=dest.use_global)

@@ -52,9 +52,11 @@ or `config.json`.
   by rules in nested directories. `<project-root>` is the repository root
   (`git rev-parse --show-toplevel`), not whatever directory happens to be the
   cwd.
-- A `Skill` call whose `call:` matches nothing — no scope at all, or scopes but
-  no matching rule — never touches session state: it does not open, lock or
-  advance the counter `remember_again_after: N calls` measures against.
+- A `Skill` call whose `call:` matches nothing touches session state only if
+  one of its scopes still has a legacy `rules-map.yml` (the notice about it
+  has to be delivered); with no scope at all, or scopes but neither a
+  matching rule nor a legacy map, it does not open, lock or advance the
+  counter `remember_again_after: N calls` measures against.
 - Changes take effect immediately. No restart.
 
 ## How verification works

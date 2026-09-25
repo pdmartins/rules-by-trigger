@@ -70,8 +70,14 @@ session.
 ## The soft-guarantee limit
 
 The trigger is a real `Skill` tool call, not the user typing `/skill-name`.
-Typing a slash command never issues a `Skill` tool call by itself — the model
-still has to decide to load the skill, and a rule waiting on that load only
-fires once it does. `call:` raises the odds that the right guidance is in
-context at the right moment; it is not a guarantee that the skill gets loaded
-in the first place.
+Typing a slash command never issues a `Skill` tool call — there is no
+`tool_input` for the hook to match against — so a `call:` rule waiting on
+that skill's load is **never delivered** when a human invokes it that way; it
+only fires once the model itself picks up the skill through the `Skill` tool.
+
+Even then the guarantee is soft, in two separate steps: the model has to load
+the skill through the `Skill` tool in the first place, and it then has to
+actually read and obey what got injected. `call:` raises the odds that the
+right guidance is in context at the right moment; it enforces neither step —
+not that the skill gets loaded, and not that the model follows the rule once
+it has been.

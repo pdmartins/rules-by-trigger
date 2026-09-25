@@ -6,7 +6,7 @@ Kept out of rules.py so that module stays about reading and writing rule
 FILES, not about how a written rule is described afterwards — and to stay
 under the plugin's 400-line-per-module ceiling."""
 
-from .common import CALL_KEY, EXCLUDE_KEY, HOOK, TOOL_KEY, VERIFY_KEY
+from .common import CALL_KEY, EXCLUDE_KEY, HOOK, TOOL_KEY, VERIFY_KEY, fail
 
 # The word that clears `call:` on `update`, exactly like `HOOK.VERIFY_NONE`
 # clears `verify:` — there is no hook-side equivalent to import, because the
@@ -25,10 +25,16 @@ def calls_for(args, source):
     `--call none` clears the key the way `--verify none` clears the
     verification: a rule may have neither a glob nor a call to begin with, so
     dropping the calls has to be sayable without a show -> edit -> update
-    round trip."""
+    round trip. An empty `--call ''` is refused rather than silently treated
+    as "clear everything" — unlike `--exclude`/`--verify`, "none" is already
+    the word for that, and a blank value reaching this far is far more likely
+    a mistake (a stray flag, a shell quoting slip) than an intentional wipe."""
     if args.call:
-        values = [value.strip() for value in args.call if value.strip()]
-        return [value for value in values if value.lower() != CALL_NONE]
+        stripped = [value.strip() for value in args.call]
+        if any(not value for value in stripped):
+            fail(f"'--{CALL_KEY}' cannot be empty; pass '--{CALL_KEY} "
+                 f"{CALL_NONE}' to clear the calls")
+        return [value for value in stripped if value.lower() != CALL_NONE]
     return HOOK.call_values_of(source)
 
 

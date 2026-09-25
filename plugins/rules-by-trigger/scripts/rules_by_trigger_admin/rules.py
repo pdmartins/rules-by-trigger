@@ -80,8 +80,11 @@ def render_rule(globs, body, remember_again_after=None, extra=None,
                  f"{len(command)}); put it in a script and call that")
     # A rule whose filters cancel its own globs is refused rather than written
     # and then reported: `validate` runs after the write, so the user would be
-    # left holding a rule that can never inject and a zero exit code.
-    for reason in filter_problems(globs, excludes):
+    # left holding a rule that can never inject and a zero exit code. A rule
+    # that also carries a `call:` is never refused over this — it still fires
+    # on the call regardless of what its excludes did to its globs.
+    filter_errors, _filter_notes = filter_problems(globs, excludes, calls)
+    for reason in filter_errors:
         fail(f"{reason} — pass --{EXCLUDE_KEY} with a narrower pattern, or "
              f"drop it")
     lines = ["---"]

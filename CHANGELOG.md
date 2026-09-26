@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
+## 0.9.0 — 2026-09-25
+
 ### Added
 
 - **`call:` — a rule can now fire on a tool call, not only on a file path.**

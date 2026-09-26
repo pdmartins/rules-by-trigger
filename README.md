@@ -18,9 +18,11 @@ repo, and the guidance still isn't tied to what the agent actually touches.
 
 - A rule is one markdown file that declares the glob it applies to, in its own
   frontmatter. There is no index to keep in sync.
-- A `PreToolUse` hook watches `Read`/`Edit`/`Write`/`MultiEdit`/`NotebookEdit`.
-- The first time Claude touches a matching file, the rule is injected into
-  context (`additionalContext`) — the body, and nothing else:
+- A `PreToolUse` hook watches `Read`/`Edit`/`Write`/`MultiEdit`/`NotebookEdit`,
+  and `Skill`, so a rule can also fire the moment a named skill is loaded.
+- The first time Claude touches a matching file, or makes a matching call, the
+  rule is injected into context (`additionalContext`) — the body, and nothing
+  else:
 
   ```
   <rules-by-trigger>
@@ -40,7 +42,10 @@ Selection by path is the mechanism, and injecting text is only the first thing
 it can drive. One rule carries up to three verbs, all chosen by the same glob:
 **inject** its body, **block** a write to the paths it covers (*Blocking a
 write*), and **verify** — run the command it declares at the end of a turn in
-which one of those paths was written (*Verifying a write*).
+which one of those paths was written (*Verifying a write*). A rule can also
+declare a `call:` trigger instead of, or beside, a glob (*Injecting on a skill
+load*) — but a call only ever drives **inject**; `block` and `verify` stay
+tied to a glob.
 
 What this buys you is convention adherence and token economy, not task
 correctness: two 2026 ablation studies found that injecting a rule into
@@ -187,6 +192,43 @@ $ rules-by-trigger which --root . --path 'src/api/users.ts' --tool read
 filtered: rule CONV_tsdoc.md — 'src/**' covers this path, but the rule is tool: write only
 ```
 
+## Injecting on a skill load (`call:`)
+
+A glob answers *where*; `call:` answers *when a tool is called with a
+specific argument*, independent of any file. The one case that ships today is
+a skill load — a rule that should reach the model the moment Claude picks up a
+particular skill, before it acts on it:
+
+```markdown
+---
+call: Skill(skill=workflow-authoring)
+---
+Before writing a Workflow script, read the script API and its resume rules.
+```
+
+`Tool(field=value)` names the `tool_name` of the call and one `tool_input`
+field it must equal, exactly and case-sensitively — no globbing on this side.
+Only `Skill` is registered: the hook's `PreToolUse` matcher only fires for a
+short allowlist of tools beyond the five file ones, and a `call:` naming
+anything else can never match. A rule may declare `glob`, `call`, or both —
+they are ORed, and delivery is deduplicated together, so a rule already sent
+by one trigger is not sent again by the other in the same session.
+
+`exclude:`, `tool:`, `block:` and `verify:` all concern path matching and have
+no effect on the call side; on a rule with a call and no glob they do nothing
+at all, and `validate` says so rather than treating them as an error.
+
+**This is a soft guarantee.** The trigger is a real `Skill` tool call, not the
+user typing `/skill-name` — a slash command never issues one, so a rule
+waiting on that skill's load is never delivered when a human types it that
+way; it only fires once the model itself invokes the skill through the
+`Skill` tool. Even then the guarantee is soft in two steps: the model has to
+load the skill through the `Skill` tool, and it then has to actually read and
+follow what was injected. `call:` raises the odds the right guidance is in
+context at the right moment; it forces neither step. See
+`references/calls.md` in the `manage` skill for the full grammar and its
+limits.
+
 ## Repeating a rule
 
 A rule is injected the first time it is relevant, then sent again once the
@@ -204,9 +246,10 @@ There is no short form of a repeat: with no header in the emitted text, there is
 no way to mark a fragment as one, so the whole body is resent. **A short rule is
 a cheap rule.**
 
-A rule is only ever repeated when its glob matches the file being touched. A
-rule governing a folder nobody opens again is never repeated, however long the
-session runs.
+A rule is only ever repeated when its glob matches the file being touched, or
+its call matches the tool call being made. A rule governing a folder nobody
+opens again, or a skill nobody loads again, is never repeated, however long
+the session runs.
 
 The default comes from the rule's type, then from `config.json` (see below);
 `RULES_BY_TRIGGER_REMEMBER_AGAIN_AFTER` overrides it for one session, and
@@ -399,7 +442,8 @@ anywhere). To target a `docs/` folder wherever it appears, use `**/docs/**`.
   planted symlink cannot redirect one.
 - **Bash is out of scope by design**: `cat`/`sed` via Bash don't trigger
   injection — parsing paths out of arbitrary shell commands would be fragile
-  and easy to spoof. The five file tools are the reliable signal.
+  and easy to spoof. The five file tools, plus the short allowlist of tools a
+  `call:` trigger can name (`Skill`, today), are the reliable signal.
 
 ## Security model
 
@@ -697,7 +741,7 @@ of which is installed on a user's machine.
 plugins/
 └── rules-by-trigger/                THE PLUGIN — this, and only this, is installed
     ├── .claude-plugin/plugin.json
-    ├── hooks/                    PreToolUse injection, Stop verification, SessionStart
+    ├── hooks/                    PreToolUse injection (incl. injection.py, the shared delivery path), Stop verification, SessionStart
     ├── bin/                      launchers (POSIX + .cmd), on PATH when installed
     ├── scripts/                  the management CLI the skills drive
     ├── skills/                   manage, doctor, improve

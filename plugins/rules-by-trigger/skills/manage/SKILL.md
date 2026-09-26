@@ -3,11 +3,12 @@ name: manage
 description: >
   Register, list, update, split, move or remove path-scoped rules for the
   rules-by-trigger system — markdown rules auto-injected into context by a
-  PreToolUse hook whenever Claude touches a file matching a glob. Use whenever
-  the user asks to create/manage a rule tied to a folder or path, in any
-  language, e.g. "add a rule for src/api", "when touching X follow Y", "create
-  a folder-scoped rule", "list/remove the per-path rules", "make this rule
-  global". Rules live in .claude/rules-by-trigger/ (project scope) or
+  PreToolUse hook whenever Claude touches a file matching a glob, or loads a
+  named skill. Use whenever the user asks to create/manage a rule tied to a
+  folder or path, in any language, e.g. "add a rule for src/api", "when
+  touching X follow Y", "create a folder-scoped rule", "when loading skill X
+  follow Y", "list/remove the per-path rules", "make this rule global". Rules
+  live in .claude/rules-by-trigger/ (project scope) or
   ~/.claude/rules-by-trigger/ (global scope).
 ---
 
@@ -26,8 +27,9 @@ rule files, and the CLI validates what it writes.
 
 ## What a rule is
 
-One markdown file whose frontmatter declares its glob; the body is the whole
-message the model receives — no name, no glob, no scope travels with it:
+One markdown file whose frontmatter declares its glob, its call, or both; the
+body is the whole message the model receives — no name, no glob, no scope
+travels with it:
 
 ```markdown
 ---
@@ -36,10 +38,21 @@ glob: src/api/**
 Every endpoint validates its input and returns ProblemDetails on error.
 ```
 
+A rule can also fire when a skill is loaded, instead of or beside a glob —
+`references/calls.md` has the grammar and its limits:
+
+```markdown
+---
+call: Skill(skill=workflow-authoring)
+---
+Before writing a Workflow script, read the script API and its resume rules.
+```
+
 Three consequences shape everything below: a rule is injected once per
 session and then **resent whole** at its repeat distance, so short is cheap;
-every file the glob matches receives **all** of it, so one constraint per
-path set; and rules arrive independently, so each must **stand alone**.
+every file the glob matches (or every matching call) receives **all** of it,
+so one constraint per path set; and rules arrive independently, so each must
+**stand alone**.
 
 ## Asking the user
 
@@ -82,8 +95,10 @@ with the list.
 1. **Scope.** Project by default; global only when the user says it applies
    everywhere. If ambiguous, ask (*Asking the user*).
 2. **What already covers the target:** `which --root "<root>" --path '<file
-   or folder>'`. Same concern in an existing rule → update it (step 6); a
-   different concern is a new rule, even for the same glob.
+   or folder>'`, or `which --root "<root>" --call 'Tool(field=value)'` when the
+   rule is about a skill load rather than a file. Same concern in an existing
+   rule → update it (step 6); a different concern is a new rule, even for the
+   same glob or call.
 3. **Type and name.** The file name is `TYPE_what-it-asserts.md`
    (`ARCH_handlers-inherit-base.md`, lowercase words joined by `-`, ASCII).
    The taxonomy is configuration — `config --root "<root>"` prints the
@@ -106,11 +121,13 @@ with the list.
    EOF
    ```
 
-   Repeat `--glob` for several. `--exclude` and `--tool read|write` narrow
-   it; `--remember-again-after 30k|'25 calls'|never` overrides the type's
+   Repeat `--glob` for several. `--call 'Tool(field=value)'` adds a call
+   trigger instead of, or beside, a glob — one of the two is required. `add`
+   also takes `--exclude` and `--tool read|write` to narrow the glob side;
+   `--remember-again-after 30k|'25 calls'|never` overrides the type's
    cadence. Read the notes `add` prints: they catch the split you missed.
 6. **Update by name, never by glob** — read before you overwrite, `update`
-   replaces the whole body and keeps the globs:
+   replaces the whole body and keeps the globs and calls:
 
    ```bash
    "${CLAUDE_PLUGIN_ROOT}/bin/rules-by-trigger" show   --root "<root>" --rule 'ARCH_handlers-inherit-base.md'
@@ -120,8 +137,8 @@ with the list.
    ```
 
 **Single-quote every value that came out of a rule** (`--rule '...'`,
-`--glob '...'`): a glob is unrestricted repository data, and `$(...)` expands
-inside double quotes.
+`--glob '...'`, `--call '...'`): a glob or a call is unrestricted repository
+data, and `$(...)` expands inside double quotes.
 
 ## When the user asks for a check (`verify:`)
 
@@ -194,5 +211,8 @@ skill's job, not this one's.
   user pastes a page of knowledge to be remembered (split it first).
 - `references/globs.md` — when the glob is not obvious (anti-duplication
   rules go on the WRONG area), the semantics table, `exclude` and `tool`.
+- `references/calls.md` — when a rule should fire on a skill load: the
+  `call:` grammar, why only `Skill` is registered, and its soft-guarantee
+  limit.
 - `references/mechanics.md` — timing, repeats, scopes, the `verify:` key,
   `config.json` layers and how to change them under hardening.

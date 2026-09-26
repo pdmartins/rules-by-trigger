@@ -6,14 +6,20 @@ or `config.json`.
 ## How injection works
 
 - The hook reads the rules on every Read/Edit/Write/MultiEdit/NotebookEdit and
-  injects the ones whose glob matches the touched file.
+  injects the ones whose glob matches the touched file. It also runs for a
+  `Skill` call and injects the ones whose `call:` matches the skill loaded —
+  see `references/calls.md` for the grammar. A rule may declare a glob, a
+  call, or both.
 - What reaches the model is the rule bodies and nothing else — an opening tag,
   the bodies separated by a `---` line, a closing tag. No preamble, no rule
   name, no glob, no scope: nothing about a rule's origin is emitted.
 - A rule is injected **once per session** in the main conversation, and once in
   each subagent, which starts from an empty context of its own; then it is
   **sent again, whole**, once the context has moved on by `remember_again_after` — and only when the rule's glob
-  matches again, so a rule for a folder nobody reopens is never repeated.
+  or call matches again, so a rule for a folder nobody reopens, or a skill
+  nobody reloads, is never repeated. A `glob` and a `call` on the same rule
+  share one dedup key, so whichever fires first delivers it and the other does
+  not re-send it in the same context.
   The value takes tokens (`30k`, `1M`), calls (`25 calls`), or `never`. Each
   rule type carries its own default, which `add` writes into the rule; the
   session-wide default lives in `config.json` and `rules-by-trigger config` prints
@@ -29,7 +35,7 @@ or `config.json`.
 - Editing a rule re-injects it in full immediately — the dedup key includes the
   content.
 - Bash access (`cat`, `sed -i`) does NOT trigger injection; only the five file
-  tools do.
+  tools and the tools a `call:` can name (`Skill`, today) do.
 - The user sees one terminal line per tool call that injected a rule, naming
   every rule it injected (marking repeats, new versions and subagent calls).
   It rides on `systemMessage`, which Claude Code shows to the user, and adds
@@ -38,12 +44,19 @@ or `config.json`.
   config cannot (a repository whose rules get injected must not be able to
   hide that from the user).
 - Scopes: every `.claude/rules-by-trigger/` from the touched file's directory up to
-  the filesystem root, plus `~/.claude/rules-by-trigger/`. The walk does not stop
-  at a repository boundary, so a git submodule receives its parent repository's
-  rules. The global scope is budgeted first and the outermost scope second, so
-  neither can be crowded out by rules in nested directories. `<project-root>` is
-  the repository root (`git rev-parse --show-toplevel`), not whatever directory
-  happens to be the cwd.
+  the filesystem root, plus `~/.claude/rules-by-trigger/`. A `Skill` call touches
+  no file, so its scopes are anchored on the session's cwd instead, walked up
+  the same way. The walk does not stop at a repository boundary, so a git
+  submodule receives its parent repository's rules. The global scope is
+  budgeted first and the outermost scope second, so neither can be crowded out
+  by rules in nested directories. `<project-root>` is the repository root
+  (`git rev-parse --show-toplevel`), not whatever directory happens to be the
+  cwd.
+- A `Skill` call whose `call:` matches nothing touches session state only if
+  one of its scopes still has a legacy `rules-map.yml` (the notice about it
+  has to be delivered); with no scope at all, or scopes but neither a
+  matching rule nor a legacy map, it does not open, lock or advance the
+  counter `remember_again_after: N calls` measures against.
 - Changes take effect immediately. No restart.
 
 ## How verification works

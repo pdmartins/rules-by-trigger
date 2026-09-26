@@ -45,8 +45,11 @@ BLOCK_TO_PROJECT = ("this rule carries `block: true`: a project scope cannot "
                     "native deny entry")
 MOVED = "ok: moved {name}  {source} -> {dest}"
 REWRITTEN = "    {key}: {before!r} -> {after!r}"
-PROVE = ("check the reach: `which --{flag} --path '<a file it should govern>'` "
-         "and one it should not")
+PROVE_PATH = ("check the reach: `which --{flag} --path '<a file it should "
+             "govern>'` and one it should not")
+# A call-only rule has no glob for --path to probe — `which --call` is the
+# reach check that actually exercises it.
+PROVE_CALL = "check the reach: `which --{flag} --call '{call}'`"
 # -----------------------------------------------------------------------------
 
 
@@ -151,8 +154,13 @@ def cmd_move(args):
     rewrite.source_root = source_anchor
     globs = rewrite_all(HOOK.globs_of(fields), HOOK.GLOB_KEYS[0], rewrite)
     excludes = rewrite_all(HOOK.excludes_of(fields), HOOK.EXCLUDE_KEYS[0], rewrite)
-    if not globs:
-        fail(f"{name} declares no glob; give it one with `update --glob` before moving")
+    # A call trigger is not path-shaped — nothing about it changes with the
+    # scope — so it rides along verbatim, the same way `preserved_fields`
+    # carries any other setting the move does not touch.
+    calls = HOOK.call_values_of(fields)
+    if not globs and not calls:
+        fail(f"{name} declares neither a glob nor a call; give it one with "
+             f"`update --glob`/`--call` before moving")
 
     source_language = HOOK.language(config_for(args))
     dest_language = HOOK.language(dest_config)
@@ -161,7 +169,8 @@ def cmd_move(args):
         [after for _before, after in globs], body, submitted_interval(fields),
         preserved_fields(fields, owned_last=True),
         excludes=[after for _before, after in excludes],
-        tool=HOOK.tools_of(fields), verify=HOOK.verify_of(fields)))
+        tool=HOOK.tools_of(fields), verify=HOOK.verify_of(fields),
+        calls=calls))
     os.unlink(source_path)
 
     source_label = "global" if args.use_global else f"project {source_anchor}"
@@ -174,6 +183,9 @@ def cmd_move(args):
         warn(LANGUAGE_DIFFERS.format(dest=dest_language, source=source_language))
     if HOOK.block_of(fields):
         warn(BLOCK_TO_GLOBAL if dest.use_global else BLOCK_TO_PROJECT)
-    print(PROVE.format(flag=dest_flag))
+    if globs:
+        print(PROVE_PATH.format(flag=dest_flag))
+    else:
+        print(PROVE_CALL.format(flag=dest_flag, call=calls[0]))
     validate_scope(dest_dir, dest_anchor, quiet=True, config=dest_config,
                    is_global=dest.use_global)

@@ -46,7 +46,7 @@ class StatusTest(util.SandboxTestCase):
     def test_findings_from_validate_are_folded_in(self):
         util.write_rule(self.proj, "CONV_dead.md", [], "NEVER FIRES")
         out = self.status().stdout
-        self.assertIn("ERROR: CONV_dead.md: no glob declared", out)
+        self.assertIn("ERROR: CONV_dead.md: no glob and no call declared", out)
 
     def test_path_coverage_is_answered_per_scope(self):
         util.write_rule(self.proj, "CONV_api.md", "src/api/**", "API RULE")

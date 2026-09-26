@@ -6,7 +6,7 @@ as such rather than left silent."""
 
 import os
 
-from .common import EXCLUDE_KEY, HOOK, TOOL_KEY, fail, rules_in, scope_for
+from .common import EXCLUDE_KEY, HOOK, TOOL_KEY, check_call, fail, rules_in, scope_for
 
 # The three answers `coverage_of` gives about one rule.
 COVERAGE_MATCH = "match"
@@ -104,8 +104,38 @@ def no_coverage_line(entries, shown):
     return f"no rule covers '{shown}'"
 
 
+def call_coverage_of(scope_dir, tool, field, value):
+    """[(status, rule name, line)] — `coverage_of`'s twin for a `call:`
+    trigger. There is only ever COVERAGE_MATCH here: `exclude`/`tool`/`block`/
+    `verify` never apply to a call trigger (see the frontmatter contract), so
+    there is no "excluded"/"filtered" story to tell, only "does it match".
+
+    Reuses `HOOK.call_trigger_of` — the hook's own matcher, fed a synthetic
+    `tool_input` of just this one field — so this answers exactly what the
+    hook would do with that call, never a second implementation of the match."""
+    if not os.path.isdir(scope_dir):
+        return []
+    tool_input = {field: value}
+    entries = []
+    for name, fields, _body in rules_in(scope_dir):
+        trigger = HOOK.call_trigger_of(fields, tool, tool_input)
+        if trigger is not None:
+            entries.append((COVERAGE_MATCH, name, f"match: rule {name} — call: {trigger}"))
+    return entries
+
+
 def cmd_which(args):
     scope_dir, anchor = scope_for(args)
+    if args.call:
+        call_text = args.call[0]
+        check_call(call_text)
+        tool, field, value = HOOK.parse_call_trigger(call_text)
+        entries = call_coverage_of(scope_dir, tool, field, value)
+        for _status, _name, line in entries:
+            print(line)
+        if not entries:
+            print(f"no rule injects for call {call_text!r}")
+        return
     entries, shown = coverage_of(scope_dir, anchor, args.use_global, args.path,
                                  args.tool)
     for _status, _name, line in entries:

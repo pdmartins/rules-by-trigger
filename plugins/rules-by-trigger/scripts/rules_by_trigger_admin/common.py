@@ -102,12 +102,13 @@ LEGACY_MAP_NAME = HOOK.LEGACY_MAP_NAME
 GLOB_KEY = HOOK.GLOB_KEYS[0]
 EXCLUDE_KEY = HOOK.EXCLUDE_KEYS[0]
 TOOL_KEY = HOOK.TOOL_KEYS[0]
+CALL_KEY = HOOK.CALL_KEYS[0]
 BLOCK_KEY = HOOK.BLOCK_KEY
 LEGACY_BLOCK_KEY = HOOK.LEGACY_BLOCK_KEY
 VERIFY_KEY = HOOK.VERIFY_KEY
 RENDERED_KEYS = ({INTERVAL_KEY, LEGACY_INTERVAL_KEY, VERIFY_KEY}
                  | set(HOOK.GLOB_KEYS) | set(HOOK.EXCLUDE_KEYS)
-                 | set(HOOK.TOOL_KEYS))
+                 | set(HOOK.TOOL_KEYS) | set(HOOK.CALL_KEYS))
 OWN_KEYS = RENDERED_KEYS | {DESCRIPTION_KEY, BLOCK_KEY, LEGACY_BLOCK_KEY}
 
 
@@ -247,6 +248,40 @@ def check_line_value(label, value):
         fail(f"invalid {label} value (one printable line, no control characters): "
              f"{text[:MAX_ECHOED_NAME_CHARS]!r}")
     return text
+
+
+def call_problem(value):
+    """None when `value` is a usable `call:` trigger; otherwise the reason it
+    is not — one wording, shared by `check_call` (which refuses to WRITE a bad
+    one) and `validate` (which reports one already on disk, hand-edited), so
+    the two never say the grammar in two different ways."""
+    try:
+        check_line_value(CALL_KEY, value)
+    except AdminError as exc:
+        return str(exc)
+    if len(value) > HOOK.MAX_GLOB_CHARS:
+        return f"{CALL_KEY} trigger longer than {HOOK.MAX_GLOB_CHARS} characters"
+    parsed = HOOK.parse_call_trigger(value)
+    if parsed is None:
+        return (f"{value[:MAX_ECHOED_NAME_CHARS]!r} is not understood — write it "
+                f"as Tool(field=value); it never fires")
+    tool = parsed[0]
+    if tool not in HOOK.CALL_TRIGGER_TOOLS:
+        return (f"{tool!r} is not a tool the hook listens to for a call trigger; "
+                f"only {'/'.join(HOOK.CALL_TRIGGER_TOOLS)} is — "
+                f"{value[:MAX_ECHOED_NAME_CHARS]!r} never fires")
+    return None
+
+
+def check_call(value):
+    """A call trigger is checked before `render_rule` writes it — parseable by
+    the hook's own grammar and naming a tool the hook actually listens to for
+    a call — so what `add`/`update` confirm is a trigger that can actually
+    fire, never one dead on arrival."""
+    problem = call_problem(value)
+    if problem:
+        fail(problem)
+    return value
 
 
 def preserved_fields(fields, owned_last=False):

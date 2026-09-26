@@ -3,6 +3,8 @@
 Deliberately the only parser in the plugin — the admin CLI imports this one
 rather than carrying a second implementation."""
 
+import re
+
 from .constants import (MAX_GLOB_CHARS, MAX_GLOBS_PER_RULE,
                         MAX_VERIFY_COMMAND_CHARS, MAX_VERIFY_COMMANDS,
                         MIN_REMEMBER_AGAIN_TOKENS, TOOL_ANY_VALUES,
@@ -13,6 +15,17 @@ from .constants import (MAX_GLOB_CHARS, MAX_GLOBS_PER_RULE,
 GLOB_KEYS = ("glob", "globs")
 EXCLUDE_KEYS = ("exclude", "excludes")
 TOOL_KEYS = ("tool", "tools")
+# `call`/`calls`: the same singular/plural convention, for a rule fired by a
+# tool call instead of a touched path.
+CALL_KEYS = ("call", "calls")
+
+# `Tool(field=value)` — a call trigger's whole grammar. `value` is everything
+# up to the LAST `)`, not the first: it may itself carry colons or parentheses
+# (`Skill(skill=plugin:name)`, or a value that quotes a call), so the group is
+# non-greedy and anchored to the end of the line rather than stopping at the
+# first `)` it meets.
+CALL_TRIGGER_RE = re.compile(
+    r"^\s*([A-Za-z][A-Za-z0-9_]*)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?)\s*\)\s*$")
 
 # The key that asks for a block, the spelling it carried until 0.7.0, and the
 # words that turn it on. `enforce: deny` is still read; nothing writes it.
@@ -141,6 +154,50 @@ def excludes_of(fields):
     Declared like `glob`: one value or a list, singular or plural key."""
     return glob_list(fields, EXCLUDE_KEYS, "exclude",
                      "the rule still injects for the paths they name")
+
+
+def parse_call_trigger(text):
+    """(tool, field, value) from one `call:` value's `Tool(field=value)`
+    grammar, or None when `text` does not follow it.
+
+    `tool` and `field` are returned exactly as written — `tool` is compared
+    case-sensitively against `tool_name`, and `field` is a key of
+    `tool_input` — while `value` is whitespace-stripped and never empty (an
+    empty value, `Skill(skill=)`, cannot mean anything: no `tool_input` field
+    is ever the empty string after stripping). A rule may write nonsense here
+    by hand; this function says so by answering None rather than raising, so
+    one bad `call:` line never takes the frontmatter parse down with it."""
+    match = CALL_TRIGGER_RE.match(text)
+    if not match:
+        return None
+    tool, field, value = match.groups()
+    value = value.strip()
+    if not value:
+        return None
+    return tool, field, value
+
+
+def call_values_of(fields):
+    """The raw call triggers a rule declares under `call`/`calls`, bounded
+    exactly like `globs_of` — same caps, same warnings, because it is the
+    same reader (`glob_list`) reused for a different key. Read here rather
+    than parsed: `validate` and the admin need the text of an unparseable
+    trigger too, to report it."""
+    return glob_list(fields, CALL_KEYS, "call",
+                     "these never fire — split the rule or remove some calls")
+
+
+def calls_of(fields):
+    """[(text, tool, field, value)] for the call triggers that parse, in the
+    order they were declared. An unparseable one is skipped silently: this
+    runs on the hook's hot path, where a bogus grammar is not worth a warning
+    on every single tool call — `validate` is where a human is listening."""
+    parsed = []
+    for text in call_values_of(fields):
+        result = parse_call_trigger(text)
+        if result is not None:
+            parsed.append((text, *result))
+    return parsed
 
 
 def tool_values_of(fields):

@@ -9,10 +9,16 @@ import sys
 
 from .common import (BLOCK_KEY, EXCLUDE_KEY, HOOK, INTERVAL_KEY,
                      LEGACY_BLOCK_KEY, LEGACY_INTERVAL_KEY, LEGACY_MAP_NAME,
-                     OWN_KEYS, TOOL_KEY, VERIFY_KEY, other_markdown_in,
-                     rules_in, scope_for)
+                     OWN_KEYS, TOOL_KEY, VERIFY_KEY, call_problem,
+                     other_markdown_in, rules_in, scope_for)
 from .config import TYPE_SEPARATOR, config_for, name_convention, split_type_prefix
 from .splitting import split_candidates
+
+# The keys that only ever narrow a PATH trigger — declared on a rule with
+# calls and no glob, they are dead weight rather than a mistake: `validate`
+# says so as a note, not an error, because the rule still fires on its calls.
+IRRELEVANT_ON_CALL_ONLY_KEYS = (set(HOOK.EXCLUDE_KEYS) | set(HOOK.TOOL_KEYS)
+                                | {BLOCK_KEY, LEGACY_BLOCK_KEY, VERIFY_KEY})
 
 # Case-insensitive: a rule stating a prohibition needs the opposite
 # reinforcement default from one stating a requirement or convention — only
@@ -45,25 +51,37 @@ def effective_interval(name, fields, config):
     return HOOK.parse_remember_again_after(type_default, name) if type_default else None
 
 
-def filter_problems(globs, excludes):
-    """Reasons a rule's own filters mean it can never inject, unprefixed — the
-    caller names the rule, because `render_rule` uses this to refuse to WRITE
-    one of these and has no name to give.
+def filter_problems(globs, excludes, calls=()):
+    """(problems, notes) — reasons a rule's own filters mean its globs can
+    never match, unprefixed: the caller names the rule, because `render_rule`
+    uses this to refuse to WRITE one of these and has no name to give.
 
-    Both shapes are silent in production: the rule simply never arrives and
-    nothing says why, which is exactly the failure this plugin must not have.
     Only the two decidable cases are reported — a glob cancelled by an identical
     exclude, and an exclude that swallows every path. Anything subtler is a
-    judgement, and `which` answers it for a concrete path."""
+    judgement, and `which` answers it for a concrete path.
+
+    `exclude:` only ever concerns PATH matching (see the frontmatter contract),
+    so a rule that also carries a `call:` still fires on that regardless of
+    what its excludes did to its globs — "can never inject" would be simply
+    wrong for it. A call-only rule (no globs at all) says nothing here: the
+    exclude is inert, and the call-only irrelevant-key note already says so.
+    A glob+call rule is reported as a NOTE instead, naming what still fires
+    it — never a `problems` entry, so it never costs the exit code."""
     if not excludes:
-        return []
+        return [], []
     if MATCH_EVERYTHING_GLOB in excludes:
-        return [f"{EXCLUDE_KEY}: {MATCH_EVERYTHING_GLOB!r} takes back every "
-                f"path, so the rule can never inject"]
-    if globs and set(globs) <= set(excludes):
-        return [f"every glob it declares is also an {EXCLUDE_KEY}, so the rule "
-                f"can never inject"]
-    return []
+        dead = (f"{EXCLUDE_KEY}: {MATCH_EVERYTHING_GLOB!r} takes back every "
+                f"path")
+    elif globs and set(globs) <= set(excludes):
+        dead = f"every glob it declares is also an {EXCLUDE_KEY}"
+    else:
+        return [], []
+    if not calls:
+        return [f"{dead}, so the rule can never inject"], []
+    if globs:
+        return [], [f"{dead}, so its globs never match — it only fires on "
+                    f"its call"]
+    return [], []
 
 
 def filter_notes(name, fields):
@@ -82,7 +100,7 @@ def filter_notes(name, fields):
             f"ignored, so the rule applies to every tool call it matches"]
 
 
-def block_notes(name, fields, is_global):
+def block_notes(name, fields, is_global, globs=()):
     """Notes about a rule's `block:` setting: the spelling it carried until
     0.7.0, a value the hook does not recognise, or a block declared somewhere
     the hook will never honour it.
@@ -91,7 +109,14 @@ def block_notes(name, fields, is_global):
     project rule arrives with whatever repository is checked out, and letting it
     deny the user's own tool calls would be an escalation. This is where that
     trust gate is explained to a human, with the way around it — a native deny
-    via `block --sync` — spelled out."""
+    via `block --sync` — spelled out.
+
+    `globs` is only consulted for that last part: `block --sync` writes one
+    native deny entry per glob, so a call-only rule (no globs at all) has
+    nothing for it to sync — pointing at it would be advice that does
+    nothing. The call-only irrelevant-key note (see `scope_findings`) already
+    says `block:` has no effect here at all, so this stays silent rather than
+    repeat that in a narrower, and in this one case misleading, way."""
     declared = HOOK.first_value(fields, BLOCK_KEY)
     legacy = HOOK.first_value(fields, LEGACY_BLOCK_KEY)
     if declared is None and legacy is None:
@@ -116,6 +141,8 @@ def block_notes(name, fields, is_global):
         return notes + [f"{name}: {BLOCK_KEY} on a {TOOL_KEY}: "
                         f"{HOOK.TOOL_KIND_READ} rule never fires — a block only "
                         f"ever acts on a write, and reads are never blocked"]
+    if not is_global and not globs:
+        return notes
     if not is_global:
         return notes + [f"{name}: {BLOCK_KEY} only takes effect from the GLOBAL "
                         f"scope (project rules are untrusted input); the hook "
@@ -246,11 +273,24 @@ def scope_findings(scope_dir, anchor=None, config=None, is_global=False):
     total = 0
     for name, fields, body in rules:
         globs = HOOK.globs_of(fields)
+        calls = HOOK.call_values_of(fields)
         excludes = HOOK.excludes_of(fields)
-        if not globs:
-            problems.append(f"{name}: no glob declared, so it can never be injected")
-        problems.extend(f"{name}: {reason}"
-                        for reason in filter_problems(globs, excludes))
+        if not globs and not calls:
+            problems.append(f"{name}: no glob and no call declared, so it can "
+                            f"never be injected")
+        filter_errors, exclude_notes = filter_problems(globs, excludes, calls)
+        problems.extend(f"{name}: {reason}" for reason in filter_errors)
+        notes.extend(f"{name}: {reason}" for reason in exclude_notes)
+        for value in calls:
+            problem = call_problem(value)
+            if problem:
+                problems.append(f"{name}: {problem}")
+        if calls and not globs:
+            irrelevant = sorted(set(fields) & IRRELEVANT_ON_CALL_ONLY_KEYS)
+            if irrelevant:
+                notes.append(f"{name}: {', '.join(irrelevant)} only applies to "
+                             f"a path trigger ({HOOK.GLOB_KEYS[0]}:); it has no "
+                             f"effect on this call-only rule")
         for glob in globs:
             by_glob.setdefault(glob, []).append(name)
         if not body:
@@ -271,7 +311,7 @@ def scope_findings(scope_dir, anchor=None, config=None, is_global=False):
         notes.extend(split_candidates(name, globs, body, anchor))
         notes.extend(reinforcement_notes(name, body, fields, config))
         notes.extend(filter_notes(name, fields))
-        notes.extend(block_notes(name, fields, is_global))
+        notes.extend(block_notes(name, fields, is_global, globs))
         notes.extend(verify_notes(name, fields, is_global))
     convention = name_convention(config)
     off_convention = []

@@ -169,7 +169,7 @@ def check_scope(label, target):
         if LEGACY_MAP_NAME in problem:
             continue  # reported above, with its action
         findings.append(finding(LEVEL_ERROR, f"{label} scope: {problem}",
-                                f"`update --glob` or `remove` ({flag})"))
+                                f"`update --glob`/`--call` or `remove` ({flag})"))
     if not findings:
         findings.append(finding(LEVEL_OK, f"{label} scope: {count} rule(s), "
                                 f"current format"))

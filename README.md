@@ -594,14 +594,31 @@ the rule's own guidance never delivered for that write.
 **Where it runs.** A project rule's commands run at the root of the project
 that owns the rule — where its `pytest.ini`, its `Makefile` and its relative
 paths mean what they say. A global rule has no root of its own, so it borrows
-the project of the file that triggered it — the nearest directory above the
-file holding a `.claude` — falling back to the session's working directory
-when that file belongs to no project. Your home directory's own `.claude` does
-not count as that project: it is the global scope, not a repository, so a file
-written directly under home falls back to the session's working directory the
-same way a file that belongs to no project at all does. The same global rule
-therefore runs once per repository it touched, which is the point: `pytest`
-names a different suite in each.
+one from the file that triggered it: the nearest directory above the file
+holding a `.claude`, else the nearest holding a `.git` (a directory or a file,
+so worktrees and submodules count), else the session's working directory when
+the file belongs to neither. Your home directory does not count as either: its
+`.claude` is the global scope, and a home that is a git repository (dotfiles)
+is not the project of every file below it. The same global rule therefore runs
+once per repository it touched, which is the point: `pytest` names a different
+suite in each.
+
+**Which files.** The command reads `RULES_BY_TRIGGER_FILES`: the absolute paths
+of the files written this turn that made it run (they matched the rule's glob
+and not its `exclude`), one per line, as the tool named them. When several
+rules share one command and directory, it gets the union, each path once. The
+variable is always set, and empty when there are no files. In a POSIX shell:
+
+```markdown
+---
+glob: src/**/*.py
+verify: my-check $RULES_BY_TRIGGER_FILES
+---
+```
+
+An unquoted expansion splits on whitespace, so a path containing a space
+arrives as two arguments; a script that has to cope reads the variable itself,
+one line at a time.
 
 **What comes back.** A failure holds the turn open (`decision: block`) and
 hands Claude, for each failed command, the name of the rule that asked for it,

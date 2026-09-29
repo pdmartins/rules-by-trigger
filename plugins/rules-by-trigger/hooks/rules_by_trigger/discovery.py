@@ -5,8 +5,8 @@ through a symlinked `.claude`."""
 import os
 import stat
 
-from .constants import (CLAUDE_DIR_NAME, MAX_ANCESTOR_STEPS, MAX_SCOPES,
-                        RULES_DIR_RELPATH, warn)
+from .constants import (CLAUDE_DIR_NAME, GIT_ENTRY_NAME, MAX_ANCESTOR_STEPS,
+                        MAX_SCOPES, RULES_DIR_RELPATH, warn)
 
 
 def is_safely_owned(path):
@@ -72,10 +72,40 @@ def home_dir():
     """The user's home directory, resolved through symlinks.
 
     The one computation that says what "home" means, so `find_scopes` (which
-    locates the global scope) and `project_root_of` (which must NOT mistake it
-    for a project) agree on the same directory rather than each resolving
+    locates the global scope) and `innermost_ancestor_holding` (which must NOT
+    mistake it for a project) agree on the same directory rather than each resolving
     `~` on its own."""
     return os.path.realpath(os.path.expanduser("~"))
+
+
+def innermost_ancestor_holding(start_dir, entry_name, exists):
+    """The innermost directory at or above `start_dir` where `exists` says
+    `entry_name` is there, home itself excluded — or None.
+
+    The one walk behind `project_root_of` and `git_root_of`, which differ only
+    in what they look for and in what counts as finding it.
+
+    Home is the one directory skipped, compared by realpath: `~/.claude` is the
+    GLOBAL scope and a home that is a git repository (dotfiles) is not the
+    project of every file below it. An ancestor of home holding the entry is a
+    different directory and still counts, so the walk does not stop at home.
+
+    Bounded by MAX_ANCESTOR_STEPS like the scope walk. `os.path.isdir` and
+    `os.path.exists` never raise — they report False on any OSError — so a path
+    that cannot be walked simply has no answer."""
+    directory = start_dir
+    steps = 0
+    home = home_dir()
+    while steps < MAX_ANCESTOR_STEPS:
+        steps += 1
+        if (exists(os.path.join(directory, entry_name))
+                and os.path.realpath(directory) != home):
+            return directory
+        parent = os.path.dirname(directory)
+        if parent == directory:
+            return None  # filesystem root
+        directory = parent
+    return None
 
 
 def project_root_of(start_dir):
@@ -90,36 +120,29 @@ def project_root_of(start_dir):
     no `.claude/rules-by-trigger/` at all is still a project, and its `pytest.ini`
     is still what a global `pytest` means there.
 
-    Home itself is excluded from that rule: `~/.claude` is the GLOBAL scope,
-    not a project, so a file written directly under home with no project in
-    between must fall through to the session's cwd (see the caller in
-    `verify.py`) rather than resolve to home. An ancestor of home that ALSO
-    holds a `.claude` is a different directory and still counts — a repository
-    checked out one level above the user's home is not home — so the walk does
-    not stop there, only skips the one directory that is home.
+    A file written directly under home with no project in between has none:
+    the caller falls back to `git_root_of` and then to the session's cwd (see
+    `job_cwd` in `verify.py`).
 
     Deliberately NOT the innermost scope `find_scopes` returned: that is the
     innermost directory holding a `.claude/rules-by-trigger/`, which is a different
     and rarer thing — asking for it made a global rule run at the session's cwd
-    in every repository that ships no rules of its own.
+    in every repository that ships no rules of its own."""
+    return innermost_ancestor_holding(start_dir, CLAUDE_DIR_NAME, os.path.isdir)
 
-    Bounded by MAX_ANCESTOR_STEPS like the scope walk. `os.path.isdir` never
-    raises — it reports False on any OSError — so a path that cannot be
-    walked simply has no project, and the caller falls back to the session's
-    own directory."""
-    directory = start_dir
-    steps = 0
-    home = home_dir()
-    while steps < MAX_ANCESTOR_STEPS:
-        steps += 1
-        if (os.path.isdir(os.path.join(directory, CLAUDE_DIR_NAME))
-                and os.path.realpath(directory) != home):
-            return directory
-        parent = os.path.dirname(directory)
-        if parent == directory:
-            return None  # filesystem root
-        directory = parent
-    return None
+
+def git_root_of(start_dir):
+    """The git repository `start_dir` belongs to — the innermost directory at or
+    above it holding a `.git`, home itself excluded — or None when it belongs to
+    none.
+
+    What a global rule's command borrows when the file has no `.claude` project
+    (see `project_root_of`): a repository with no Claude Code configuration is
+    still the tree a global `pytest` means. `.git` is tested with
+    `os.path.exists`, so a directory and a file both count — a worktree and a
+    submodule keep a `.git` FILE. Standard library only: reading the
+    filesystem is enough, and no process is started."""
+    return innermost_ancestor_holding(start_dir, GIT_ENTRY_NAME, os.path.exists)
 
 
 def find_scopes(start_dir):

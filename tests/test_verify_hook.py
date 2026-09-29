@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import util  # noqa: E402
@@ -32,6 +33,9 @@ def marker_command(name="marker.txt"):
 
 FAILING = python_command('import sys; print("boom"); sys.exit(3)')
 PASSING = python_command("pass")
+# Dumps the variable a verify command reads to learn which files triggered it.
+DUMP_FILES = python_command(
+    'import os; open("files.txt", "w").write(os.environ["RULES_BY_TRIGGER_FILES"])')
 
 
 def stop_payload(session, cwd):
@@ -166,6 +170,17 @@ class VerifyHookTest(util.SandboxTestCase):
                       args=("--verify",))
         self.assertEqual(self.marker(), "x")
 
+    def test_the_command_receives_exactly_the_files_that_made_it_run(self):
+        """One matching write per line; the excluded write and the one that
+        matches no glob are not among them."""
+        util.write_rule(self.proj, "CONV_src.md", "src/**", "Rule.",
+                        extra_frontmatter=["exclude: src/*.gen.py",
+                                           f"verify: {DUMP_FILES}"])
+        paths = self.wrote("src/a.py", "src/x.gen.py", "docs/d.md", "src/b.py")
+        self.verify()
+        self.assertEqual(self.marker("files.txt"),
+                         "\n".join([paths[0], paths[3]]))
+
     def test_a_tool_read_rule_still_verifies_a_write(self):
         """Spec Q14: the `tool:` filter narrows the injection; the trigger for
         a verification is a write, so the filter never applies to it."""
@@ -263,6 +278,18 @@ class RunCommandTest(unittest.TestCase):
         self.assertEqual(result.status, HOOK.STATUS_PASSED)
         self.assertIn("out", result.output)
         self.assertIn("err", result.output)
+
+    def test_the_files_reach_the_command_one_per_line(self):
+        source = 'import os; print(os.environ["RULES_BY_TRIGGER_FILES"])'
+        result = HOOK.run_command(python_command(source), self.tmp.name,
+                                  files=["/a/one.py", "/b/two.py"])
+        self.assertEqual(result.output, "/a/one.py\n/b/two.py")
+
+    def test_no_files_means_an_empty_variable_not_an_inherited_one(self):
+        source = 'import os; print(repr(os.environ["RULES_BY_TRIGGER_FILES"]))'
+        with mock.patch.dict(os.environ, {HOOK.FILES_ENV_VAR: "/leaked.py"}):
+            result = HOOK.run_command(python_command(source), self.tmp.name)
+        self.assertEqual(result.output, "''")
 
     def test_a_command_that_never_finishes_is_killed_and_reported(self):
         result = HOOK.run_command(python_command("import time; time.sleep(30)"),

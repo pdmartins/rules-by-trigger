@@ -5,6 +5,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
+`verify:` commands learn which files triggered them, and a global rule's
+command finds a git repository's root when the file has no `.claude` project.
+
+### Added
+
+- **`RULES_BY_TRIGGER_FILES` for `verify:` commands.** Each command now finds
+  in that environment variable the absolute paths of the files written this
+  turn that made it run (they matched the rule's glob and not its `exclude`),
+  one per line, as the tool named them. Rules sharing one command and
+  directory share one run, which gets the union, each path once. The variable
+  is always set, empty when there are no files, so a value inherited from the
+  parent cannot leak in. Why: a check such as a linter can now look at just
+  the files that changed instead of the whole tree.
+
+### Changed
+
+- **A global rule's command runs at the file's git root before the session's
+  cwd.** The order is now: the nearest ancestor holding a `.claude`, else the
+  nearest holding a `.git` (a directory or a file, so worktrees and submodules
+  count), else the session's cwd. Home itself is skipped in both. A file in a
+  git repository with no `.claude` used to be verified in the session's
+  repository; it now runs in its own, and one global rule over files in two
+  repositories runs once in each.
+
 ## 0.9.0 — 2026-09-25
 
 ### Added

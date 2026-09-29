@@ -16,6 +16,10 @@ ADMIN_COMMAND = os.path.join(PLUGIN_ROOT, "bin", "rules-by-trigger")
 # rules directory lives inside it, so the name is written once.
 CLAUDE_DIR_NAME = ".claude"
 RULES_DIR_RELPATH = os.path.join(CLAUDE_DIR_NAME, "rules-by-trigger")
+# What marks a git repository's root: a directory, or a file in a worktree or a
+# submodule. The fallback for a global rule's command when no `.claude` project
+# owns the written file (see `git_root_of`).
+GIT_ENTRY_NAME = ".git"
 LEGACY_MAP_NAME = "rules-map.yml"
 FILE_PATH_KEYS = ("file_path", "notebook_path", "path")
 # The only tools `block: true` ever acts on. Read/Grep never write, so a
@@ -182,6 +186,9 @@ STATE_READ_CHUNK_BYTES = 64 * 1024  # one read normally swallows the file
 DEFAULT_REMEMBER_AGAIN_TOKENS = 30_000
 DEFAULT_REMEMBER_AGAIN_CALLS = 25
 REMEMBER_AGAIN_ENV_VAR = "RULES_BY_TRIGGER_REMEMBER_AGAIN_AFTER"
+# What a `verify:` command reads to learn which written files made it run: the
+# absolute paths, one per line (see `run_command`).
+FILES_ENV_VAR = "RULES_BY_TRIGGER_FILES"
 # Floors for the repeat interval. A bare number below the token floor is read as
 # a leftover from the call-counting era (`remember_again_after: 25`) rather than
 # as an absurdly small token budget; the call floor exists so a config arriving

@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
+## 0.10.0 — 2026-09-29
+
 `verify:` commands see the files that triggered them, a global rule's command
 finds the git root when the file has no `.claude`, and the notice is per rule.
 

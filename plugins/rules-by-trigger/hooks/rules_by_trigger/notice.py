@@ -23,7 +23,7 @@ own line instead of trying to overwrite the prefix. Each line carries its own
 colour and reset, so no SGR sequence spans a newline."""
 
 from .constants import NOTICE_MARKER
-from .messages import (NOTICE_COLOUR, NOTICE_COLOUR_RESET,
+from .messages import (NOTICE_COLOUR, NOTICE_COLOUR_RESET, NOTICE_GLOBAL_KEY,
                        NOTICE_NEW_VERSION_KEY, NOTICE_REPEAT_KEY,
                        NOTICE_RULE_BULLET, NOTICE_SUBAGENT_KEY)
 from .context import build_context
@@ -59,6 +59,16 @@ def notice_name(block, messages):
     return block["name"]
 
 
+def notice_item(block, messages):
+    """One rule's whole line, before colouring: indent, bullet, the tag that
+    marks a rule from the global scope (project rules carry none), then the
+    name with its own suffix. The tag sits before the name so the suffix
+    stays the last thing on the line."""
+    tag = f"{messages[NOTICE_GLOBAL_KEY]} " if block.get("is_global") else ""
+    return (f"{NOTICE_ITEM_INDENT}{NOTICE_RULE_BULLET} {tag}"
+            f"{notice_name(block, messages)}")
+
+
 def coloured_line(text):
     """One line of the notice inside its own colour and reset, padded by one
     space on each side. Colouring line by line keeps every SGR sequence
@@ -73,8 +83,9 @@ def build_notice_line(blocks, messages, in_subagent):
     `rule_blocks_of`), and neither does an empty call.
 
     The block is a header line (`NOTICE_MARKER`) followed by one line per
-    rule, in block order: the bullet, the rule's name and its own
-    `(repeat)` / `(new version)` suffix. The subagent marker, when this call
+    rule, in block order: the bullet, `[global]` when the rule comes from the
+    global scope, the rule's name and its own `(repeat)` / `(new version)`
+    suffix. The subagent marker, when this call
     ran inside one, applies to the whole block and so is added once, at the
     end of the header, rather than to each rule. Lines are joined by a
     newline with none at the end, and the block starts with a newline so it
@@ -87,9 +98,7 @@ def build_notice_line(blocks, messages, in_subagent):
         header = f"{header} {messages[NOTICE_SUBAGENT_KEY]}"
     lines = [coloured_line(header)]
     for block in rules:
-        item = (f"{NOTICE_ITEM_INDENT}{NOTICE_RULE_BULLET} "
-                f"{notice_name(block, messages)}")
-        lines.append(coloured_line(item))
+        lines.append(coloured_line(notice_item(block, messages)))
     return NOTICE_BLOCK_START + NOTICE_LINE_SEPARATOR.join(lines)
 
 

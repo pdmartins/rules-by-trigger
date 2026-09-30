@@ -37,9 +37,9 @@ or `config.json`.
 - Bash access (`cat`, `sed -i`) does NOT trigger injection; only the five file
   tools and the tools a `call:` can name (`Skill`, today) do.
 - The user sees one terminal block per tool call that injected a rule: a
-  `rules-by-trigger:` header, then one line per rule injected (marking
-  repeats and new versions on the rule's own line, and subagent calls on the
-  header). It rides on `systemMessage`, which Claude Code shows to the user,
+  `rules-by-trigger:` header, then one line per rule injected (tagging a
+  global-scope rule `[global]`, marking repeats and new versions on the
+  rule's own line, and subagent calls on the header). It rides on `systemMessage`, which Claude Code shows to the user,
   and adds nothing to `additionalContext`, the text the hook injects for the
   model. `"show_injections": false` in the GLOBAL config turns it off; a project
   config cannot (a repository whose rules get injected must not be able to

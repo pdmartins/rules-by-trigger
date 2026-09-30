@@ -18,9 +18,11 @@ EN = HOOK.messages_for(HOOK.DEFAULT_LANGUAGE)
 PT_BR = HOOK.messages_for(HOOK.BRAZILIAN_PORTUGUESE)
 
 
-def rule_block(name, repeat=False, superseded=False, scope_dir="/scope"):
+def rule_block(name, repeat=False, superseded=False, scope_dir="/scope",
+               is_global=False):
     return {"name": name, "text": "body", "scope_dir": scope_dir,
-           "glob": "**", "repeat": repeat, "superseded": superseded}
+           "glob": "**", "repeat": repeat, "superseded": superseded,
+           "is_global": is_global}
 
 
 def legacy_block():
@@ -36,10 +38,10 @@ def header(suffix=""):
             f"{HOOK.NOTICE_COLOUR_RESET}")
 
 
-def item(name):
+def item(name, tag=""):
     """A rule line: two spaces before the bullet (the padding plus one of
-    indent), one space of padding after the name."""
-    return (f"{HOOK.NOTICE_COLOUR}  {HOOK.NOTICE_RULE_BULLET} {name} "
+    indent), the optional scope tag, one space of padding after the name."""
+    return (f"{HOOK.NOTICE_COLOUR}  {HOOK.NOTICE_RULE_BULLET} {tag}{name} "
             f"{HOOK.NOTICE_COLOUR_RESET}")
 
 
@@ -117,6 +119,37 @@ class NoticeLineTest(unittest.TestCase):
         self.assertEqual(line, "\n" + "\n".join(
             [header(" (subagent)"), item("A.md"), item("B.md")]))
         self.assertEqual(line.count("(subagent)"), 1)
+
+    def test_a_global_rule_is_tagged_between_the_bullet_and_its_name(self):
+        line = HOOK.build_notice_line(
+            [rule_block("CONV_x.md", is_global=True), rule_block("ARCH_y.md")],
+            EN, False)
+        self.assertEqual(line, "\n" + "\n".join(
+            [header(), item("CONV_x.md", "[global] "), item("ARCH_y.md")]))
+
+    def test_the_global_tag_comes_before_the_name_and_its_suffix_after(self):
+        line = HOOK.build_notice_line(
+            [rule_block("A.md", repeat=True, is_global=True),
+             rule_block("B.md", superseded=True, is_global=True)], EN, False)
+        self.assertEqual(line, "\n" + "\n".join(
+            [header(), item("A.md (repeat)", "[global] "),
+             item("B.md (new version)", "[global] ")]))
+
+    def test_a_block_without_the_global_field_is_not_tagged(self):
+        block = rule_block("CONV_x.md")
+        del block["is_global"]
+        line = HOOK.build_notice_line([block], EN, False)
+        self.assertNotIn("[global]", line)
+
+    def test_the_global_tag_is_translated_from_the_message_table(self):
+        for code, messages in ((HOOK.DEFAULT_LANGUAGE, EN),
+                               (HOOK.BRAZILIAN_PORTUGUESE, PT_BR)):
+            with self.subTest(language=code):
+                tag = messages[HOOK.NOTICE_GLOBAL_KEY]
+                line = HOOK.build_notice_line(
+                    [rule_block("CONV_x.md", is_global=True)], messages, False)
+                self.assertEqual(line, "\n" + header() + "\n"
+                                 + item("CONV_x.md", tag + " "))
 
     def test_the_legacy_notice_alone_names_no_rule(self):
         self.assertIsNone(HOOK.build_notice_line([legacy_block()], EN, False))
@@ -235,6 +268,18 @@ class ShowInjectionsEndToEndTest(util.SandboxTestCase):
         output, _ = self.system_message(session="s10")
         self.assertEqual(output["systemMessage"],
                          "\n" + header() + "\n" + item("CONV_api.md"))
+
+    def test_a_global_rule_is_tagged_and_a_project_rule_in_the_same_call_is_not(self):
+        util.write_rule(self.home, "ARCH_global.md",
+                        os.path.join(self.proj, "src", "**"), "Global text.")
+        output, proc = self.system_message(session="s11")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            output["systemMessage"],
+            "\n" + "\n".join([header(), item("ARCH_global.md", "[global] "),
+                               item("CONV_api.md")]))
+        self.assertNotIn("[global]", output["hookSpecificOutput"]
+                         ["additionalContext"])
 
     def test_a_reinjection_is_labelled_a_repeat(self):
         self.system_message(session="s2")

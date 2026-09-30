@@ -354,14 +354,16 @@ identifiers, not prose, and never translate.
 ### `show_injections`
 
 Every tool call that injects a rule also prints a short block naming what it
-injected: a `rules-by-trigger:` header, then one line per rule, with
-`(repeat)` or `(new version)` after the rule that earned it and `(subagent)`
-at the end of the header when the call ran inside one:
+injected: a `rules-by-trigger:` header, then one line per rule. A rule from
+your global scope (`~/.claude/rules-by-trigger`) is tagged `[global]` before
+its name; project rules carry no tag. `(repeat)` or `(new version)` follows
+the rule that earned it, and `(subagent)` goes at the end of the header when
+the call ran inside one:
 
 ```
 PreToolUse:Read says:
  rules-by-trigger:
-  💉 CONV_api.md
+  💉 [global] CONV_api.md
   💉 SEC_auth.md (repeat)
 ```
 

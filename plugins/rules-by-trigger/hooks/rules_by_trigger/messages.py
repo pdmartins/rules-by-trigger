@@ -87,6 +87,7 @@ SETUP_NOTICE_KEY = "SETUP_NOTICE"
 NOTICE_REPEAT_KEY = "NOTICE_REPEAT"
 NOTICE_NEW_VERSION_KEY = "NOTICE_NEW_VERSION"
 NOTICE_SUBAGENT_KEY = "NOTICE_SUBAGENT"
+NOTICE_GLOBAL_KEY = "NOTICE_GLOBAL"
 MESSAGE_KEYS = (LEGACY_NOTICE_KEY, SESSION_NOTICE_KEY, TRUNCATION_NOTICE_KEY,
                 SUPERSEDE_NOTICE_KEY, ENFORCE_DENY_REASON_TEMPLATE_KEY,
                 VERIFY_REPORT_HEADER_KEY, VERIFY_FAILURE_KEY,
@@ -97,7 +98,7 @@ MESSAGE_KEYS = (LEGACY_NOTICE_KEY, SESSION_NOTICE_KEY, TRUNCATION_NOTICE_KEY,
                 VERIFY_NOT_RUN_KEY, VERIFY_SYSTEM_MESSAGE_KEY,
                 VERIFY_SYSTEM_NOT_RUN_KEY, VERIFY_SYSTEM_RULE_WRITTEN_KEY,
                 SETUP_NOTICE_KEY, NOTICE_REPEAT_KEY, NOTICE_NEW_VERSION_KEY,
-                NOTICE_SUBAGENT_KEY)
+                NOTICE_SUBAGENT_KEY, NOTICE_GLOBAL_KEY)
 
 # Two spellings of the same separator, because a language code is written both
 # ways in the wild and nobody should have to guess which one this file wants.
@@ -158,6 +159,7 @@ MESSAGES = {
         NOTICE_REPEAT_KEY: "(repeat)",
         NOTICE_NEW_VERSION_KEY: "(new version)",
         NOTICE_SUBAGENT_KEY: "(subagent)",
+        NOTICE_GLOBAL_KEY: "[global]",
     },
     BRAZILIAN_PORTUGUESE: {
         LEGACY_NOTICE_KEY: (
@@ -234,6 +236,7 @@ MESSAGES = {
         NOTICE_REPEAT_KEY: "(repetição)",
         NOTICE_NEW_VERSION_KEY: "(nova versão)",
         NOTICE_SUBAGENT_KEY: "(subagente)",
+        NOTICE_GLOBAL_KEY: "[global]",
     },
 }
 SHIPPED_LANGUAGES = tuple(MESSAGES)

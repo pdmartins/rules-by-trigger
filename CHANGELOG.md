@@ -25,7 +25,9 @@ finds the git root when the file has no `.claude`, and the notice is per rule.
   names separated by commas; it is now a `rules-by-trigger:` header followed by
   a `💉`-marked line per rule, each carrying its own `(repeat)` or
   `(new version)`, and the `(subagent)` marker moves to the end of the header.
-  Each line is coloured on its own. `additionalContext` and `show_injections`
+  A rule from the global scope is tagged `[global]` before its name, so you
+  can tell your own rules from the repository's. Each line is coloured on its
+  own. `additionalContext` and `show_injections`
   are unchanged. Why: with several rules in one call the comma-separated line
   ran long and its suffixes were hard to tell apart.
 - **A global rule's command runs at the file's git root before the session's

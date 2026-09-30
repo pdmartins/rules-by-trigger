@@ -33,14 +33,17 @@ from .constants import (ADMIN_COMMAND, BRAZILIAN_PORTUGUESE, DEFAULT_LANGUAGE,
                         SESSION_NOTICE, SUPERSEDE_NOTICE, TRUNCATION_NOTICES,
                         warn)
 
-# --- user-visible: the injection notice's colour ----------------------------
-# The terminal line `notice.py` builds for the user (see its own docstring).
+# --- user-visible: the injection notice's colour and bullet -----------------
+# The terminal block `notice.py` builds for the user (see its own docstring).
 # Light text on dark blue, ANSI 256-colour SGR codes:
 # honoured by the harness even though it discards cursor-movement sequences.
+# The bullet opens each rule's line; it is language-independent, so it lives
+# here rather than in the per-language table.
 # Named constants rather than literals inside `notice.py`'s logic, kept next
 # to the translation table because both are the plugin's user-visible text.
 NOTICE_COLOUR = "\033[38;5;253;48;5;24m"
 NOTICE_COLOUR_RESET = "\033[0m"
+NOTICE_RULE_BULLET = "💉"
 # ------------------------------------------------------------------------
 
 # The keys one row holds. They are the names the constants already carry, so a
@@ -84,6 +87,7 @@ SETUP_NOTICE_KEY = "SETUP_NOTICE"
 NOTICE_REPEAT_KEY = "NOTICE_REPEAT"
 NOTICE_NEW_VERSION_KEY = "NOTICE_NEW_VERSION"
 NOTICE_SUBAGENT_KEY = "NOTICE_SUBAGENT"
+NOTICE_GLOBAL_KEY = "NOTICE_GLOBAL"
 MESSAGE_KEYS = (LEGACY_NOTICE_KEY, SESSION_NOTICE_KEY, TRUNCATION_NOTICE_KEY,
                 SUPERSEDE_NOTICE_KEY, ENFORCE_DENY_REASON_TEMPLATE_KEY,
                 VERIFY_REPORT_HEADER_KEY, VERIFY_FAILURE_KEY,
@@ -94,7 +98,7 @@ MESSAGE_KEYS = (LEGACY_NOTICE_KEY, SESSION_NOTICE_KEY, TRUNCATION_NOTICE_KEY,
                 VERIFY_NOT_RUN_KEY, VERIFY_SYSTEM_MESSAGE_KEY,
                 VERIFY_SYSTEM_NOT_RUN_KEY, VERIFY_SYSTEM_RULE_WRITTEN_KEY,
                 SETUP_NOTICE_KEY, NOTICE_REPEAT_KEY, NOTICE_NEW_VERSION_KEY,
-                NOTICE_SUBAGENT_KEY)
+                NOTICE_SUBAGENT_KEY, NOTICE_GLOBAL_KEY)
 
 # Two spellings of the same separator, because a language code is written both
 # ways in the wild and nobody should have to guess which one this file wants.
@@ -155,6 +159,7 @@ MESSAGES = {
         NOTICE_REPEAT_KEY: "(repeat)",
         NOTICE_NEW_VERSION_KEY: "(new version)",
         NOTICE_SUBAGENT_KEY: "(subagent)",
+        NOTICE_GLOBAL_KEY: "[global]",
     },
     BRAZILIAN_PORTUGUESE: {
         LEGACY_NOTICE_KEY: (
@@ -231,6 +236,7 @@ MESSAGES = {
         NOTICE_REPEAT_KEY: "(repetição)",
         NOTICE_NEW_VERSION_KEY: "(nova versão)",
         NOTICE_SUBAGENT_KEY: "(subagente)",
+        NOTICE_GLOBAL_KEY: "[global]",
     },
 }
 SHIPPED_LANGUAGES = tuple(MESSAGES)

@@ -16,6 +16,10 @@ ADMIN_COMMAND = os.path.join(PLUGIN_ROOT, "bin", "rules-by-trigger")
 # rules directory lives inside it, so the name is written once.
 CLAUDE_DIR_NAME = ".claude"
 RULES_DIR_RELPATH = os.path.join(CLAUDE_DIR_NAME, "rules-by-trigger")
+# What marks a git repository's root: a directory, or a file in a worktree or a
+# submodule. The fallback for a global rule's command when no `.claude` project
+# owns the written file (see `git_root_of`).
+GIT_ENTRY_NAME = ".git"
 LEGACY_MAP_NAME = "rules-map.yml"
 FILE_PATH_KEYS = ("file_path", "notebook_path", "path")
 # The only tools `block: true` ever acts on. Read/Grep never write, so a
@@ -182,6 +186,9 @@ STATE_READ_CHUNK_BYTES = 64 * 1024  # one read normally swallows the file
 DEFAULT_REMEMBER_AGAIN_TOKENS = 30_000
 DEFAULT_REMEMBER_AGAIN_CALLS = 25
 REMEMBER_AGAIN_ENV_VAR = "RULES_BY_TRIGGER_REMEMBER_AGAIN_AFTER"
+# What a `verify:` command reads to learn which written files made it run: the
+# absolute paths, one per line (see `run_command`).
+FILES_ENV_VAR = "RULES_BY_TRIGGER_FILES"
 # Floors for the repeat interval. A bare number below the token floor is read as
 # a leftover from the call-counting era (`remember_again_after: 25`) rather than
 # as an absurdly small token budget; the call floor exists so a config arriving
@@ -257,8 +264,8 @@ LANGUAGE_FORBIDDEN_CHARS = "\u115f\u1160\u3164\uffa0"
 DEFAULT_LANGUAGE = "en"
 BRAZILIAN_PORTUGUESE = "pt-BR"
 
-# Whether the user sees a terminal line naming the rules a tool call injected
-# (see notice.py). A `config.json` key like `language`, but trusted in only
+# Whether the user sees a terminal block (a header, then one line per rule)
+# naming the rules a tool call injected (see notice.py). A `config.json` key like `language`, but trusted in only
 # one direction: a repository whose rules get injected must not be able to
 # hide from the user that they are, so only the user's OWN layer may turn it
 # off — a project layer may switch it back on, never off.
@@ -269,8 +276,9 @@ SHOW_INJECTIONS_KEY = "show_injections"
 # is defanged from emitting them (see FORGED_FRAMING_TOKENS).
 HARNESS_MARKER = "[rules-by-trigger (rbt)]"
 
-# What every injection notice line opens with (see notice.py). A marker, not
-# prose, so it stays the same in every language — like HARNESS_MARKER above.
+# What the injection notice's header line opens with (see notice.py); the rule
+# lines below it open with padding, an indent and the bullet instead. A marker,
+# not prose, so it stays the same in every language — like HARNESS_MARKER above.
 NOTICE_MARKER = "rules-by-trigger:"
 
 LEGACY_NOTICE = (

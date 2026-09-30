@@ -35,7 +35,7 @@ import time
 
 from .constants import (VERIFY_COMMAND_TIMEOUT_SECONDS,
                         VERIFY_TOTAL_BUDGET_SECONDS, warn)
-from .discovery import find_scopes, project_root_of
+from .discovery import find_scopes, git_root_of, project_root_of
 from .frontmatter import verify_of
 from .matching import collect_candidates
 from .state import close_state, open_state, save_state, state_file_for
@@ -51,7 +51,10 @@ from .written import take_written
 #   name       the rule the report names — the first one that asked
 #   rules      [(scope_dir, name)] every rule this one run answers for, so a
 #              command two rules share is counted for both (spec Q16)
-VerifyJob = collections.namedtuple("VerifyJob", "command cwd name rules")
+#   files      the written paths that made it run, as the tool named them, for
+#              the command to read as `RULES_BY_TRIGGER_FILES`
+VerifyJob = collections.namedtuple("VerifyJob", "command cwd name rules files",
+                                   defaults=((),))
 
 
 def scope_order(base_dir):
@@ -67,25 +70,31 @@ def scope_order(base_dir):
     return (1, len([segment for segment in base_dir.split("/") if segment]))
 
 
-def job_cwd(base_dir, project_root, session_cwd):
+def job_cwd(base_dir, project_root, session_cwd, git_root=None):
     """Where one rule's commands run (spec Q6).
 
     A project rule runs at the root of the project that owns it: that is where
     its `pytest.ini`, its `Makefile` and its own relative paths make sense. A
-    global rule has no root of its own, so it borrows the root of the project
-    the written file belongs to — the innermost directory above it holding a
-    `.claude` (see `project_root_of`) — and falls back to the session's cwd
-    when the file belongs to no project at all. The same global rule therefore
-    runs once per repository it touched, which is the point: `pytest` means a
-    different suite in each.
+    global rule has no root of its own, so it borrows one from the written
+    file, in this order:
+
+      1. the project it belongs to — the innermost directory above it holding a
+         `.claude` (see `project_root_of`);
+      2. else the git repository it belongs to — the innermost directory above
+         it holding a `.git` (see `git_root_of`);
+      3. else the session's cwd, when the file belongs to neither.
+
+    The same global rule therefore runs once per repository it touched, which
+    is the point: `pytest` means a different suite in each.
 
     What it borrows is deliberately NOT the innermost RULES scope: a repository
     that ships no `.claude/rules-by-trigger/` of its own is still a project, and
-    running the user's global `pytest` at the session's cwd instead of at that
-    repository's root is how a global rule ends up testing the wrong tree."""
+    a repository with no `.claude` at all is still a repository. Running the
+    user's global `pytest` at the session's cwd instead of at that root is how a
+    global rule ends up testing the wrong tree."""
     if base_dir is not None:
         return base_dir
-    return project_root or session_cwd
+    return project_root or git_root or session_cwd
 
 
 def rule_file_written(scope_dir, name, session_rules):
@@ -110,7 +119,12 @@ def collect_jobs(written, session_cwd, deadline=None, rules_written=()):
     repositories runs once in each, and two rules of the same project asking
     for the same command run it once between them (spec §3). The rules that
     shared a job are all remembered on it — the command ran on behalf of every
-    one of them, and the usage stats say so.
+    one of them, and the usage stats say so — and so are the written files that
+    made it run: the union over those rules, each once, in the order the jobs
+    were chosen.
+
+    A global rule's cwd is the project root of the written file, else its git
+    root, else `session_cwd` (see `job_cwd`).
 
     `rules_written` is the session's own rule-file writes, and a rule whose
     file is in it contributes no job at all: its `verify:` may be one the model
@@ -123,7 +137,8 @@ def collect_jobs(written, session_cwd, deadline=None, rules_written=()):
     and nothing else. The scopes, the project root and each scope's index are
     memoised for the duration of this call: a turn that wrote forty files in
     one folder used to walk the ancestors and re-read every frontmatter of
-    every scope forty times over, all to reach the same answer.
+    every scope forty times over, all to reach the same answer. The git root is
+    memoised the same way, and only for a directory that has scopes at all.
 
     `deadline` is a `time.monotonic()` value and it is the turn's, not this
     function's: selecting is walking scopes and matching globs once per written
@@ -149,9 +164,11 @@ def collect_jobs(written, session_cwd, deadline=None, rules_written=()):
             directory = os.path.dirname(abs_path)
             found = directory_cache.get(directory)
             if found is None:
-                found = (find_scopes(directory), project_root_of(directory))
+                scopes = find_scopes(directory)
+                found = (scopes, project_root_of(directory),
+                         git_root_of(directory) if scopes else None)
                 directory_cache[directory] = found
-            scopes, project_root = found
+            scopes, project_root, git_root = found
             if not scopes:
                 continue
             candidates, _legacy = collect_candidates(abs_path, real_abs, scopes,
@@ -172,21 +189,23 @@ def collect_jobs(written, session_cwd, deadline=None, rules_written=()):
                          f"one — as a hook added to settings.json does")
                 continue
             base_dir = base_dirs.get(scope_dir)
-            cwd = job_cwd(base_dir, project_root, session_cwd)
+            cwd = job_cwd(base_dir, project_root, session_cwd, git_root)
             for command in commands:
                 entries.append((scope_order(base_dir),
-                                (command, cwd, scope_dir, name)))
+                                (command, cwd, scope_dir, name, abs_path)))
     entries.sort(key=lambda entry: entry[0])
     jobs = []
     by_pair = {}
-    for _order, (command, cwd, scope_dir, name) in entries:
+    for _order, (command, cwd, scope_dir, name, abs_path) in entries:
         job = by_pair.get((command, cwd))
         if job is None:
-            job = VerifyJob(command, cwd, name, [])
+            job = VerifyJob(command, cwd, name, [], [])
             by_pair[(command, cwd)] = job
             jobs.append(job)
         if (scope_dir, name) not in job.rules:
             job.rules.append((scope_dir, name))
+        if abs_path not in job.files:
+            job.files.append(abs_path)
     return jobs, [name for _scope_dir, name in deferred]
 
 
@@ -218,7 +237,7 @@ def run_jobs(jobs, budget=VERIFY_TOTAL_BUDGET_SECONDS,
             results.append((job, not_started()))
             continue
         allowance = min(command_timeout, remaining)
-        result = run_command(job.command, job.cwd, allowance)
+        result = run_command(job.command, job.cwd, allowance, job.files)
         if result.status == STATUS_TIMED_OUT and allowance < command_timeout:
             result = result._replace(status=STATUS_OUT_OF_TIME)
         results.append((job, result))

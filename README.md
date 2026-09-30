@@ -353,11 +353,23 @@ identifiers, not prose, and never translate.
 
 ### `show_injections`
 
-Every tool call that injects a rule also prints one terminal line naming it —
-`rules-by-trigger: CONV_api.md`, with `(repeat)` or `(new version)` per rule
-and `(subagent)` when the call ran inside one. It is for the person watching
-the terminal: it travels on the hook's `systemMessage` field, which Claude
-Code shows to the user, and the text injected for the model
+Every tool call that injects a rule also prints a short block naming what it
+injected: a `rules-by-trigger:` header, then one line per rule. A rule from
+your global scope (`~/.claude/rules-by-trigger`) is tagged `[global]` before
+its name; project rules carry no tag. `(repeat)` or `(new version)` follows
+the rule that earned it, and `(subagent)` goes at the end of the header when
+the call ran inside one:
+
+```
+PreToolUse:Read says:
+ rules-by-trigger:
+  💉 [global] CONV_api.md
+  💉 SEC_auth.md (repeat)
+```
+
+It is for the person watching the terminal: it travels on the hook's
+`systemMessage` field, which Claude Code shows to the user, and the text
+injected for the model
 (`additionalContext`) is the same with or without it.
 `show_injections: false` turns it off, but only from
 `~/.claude/rules-by-trigger/config.json`, the machine owner's own layer — a
@@ -594,14 +606,31 @@ the rule's own guidance never delivered for that write.
 **Where it runs.** A project rule's commands run at the root of the project
 that owns the rule — where its `pytest.ini`, its `Makefile` and its relative
 paths mean what they say. A global rule has no root of its own, so it borrows
-the project of the file that triggered it — the nearest directory above the
-file holding a `.claude` — falling back to the session's working directory
-when that file belongs to no project. Your home directory's own `.claude` does
-not count as that project: it is the global scope, not a repository, so a file
-written directly under home falls back to the session's working directory the
-same way a file that belongs to no project at all does. The same global rule
-therefore runs once per repository it touched, which is the point: `pytest`
-names a different suite in each.
+one from the file that triggered it: the nearest directory above the file
+holding a `.claude`, else the nearest holding a `.git` (a directory or a file,
+so worktrees and submodules count), else the session's working directory when
+the file belongs to neither. Your home directory does not count as either: its
+`.claude` is the global scope, and a home that is a git repository (dotfiles)
+is not the project of every file below it. The same global rule therefore runs
+once per repository it touched, which is the point: `pytest` names a different
+suite in each.
+
+**Which files.** The command reads `RULES_BY_TRIGGER_FILES`: the absolute paths
+of the files written this turn that made it run (they matched the rule's glob
+and not its `exclude`), one per line, as the tool named them. When several
+rules share one command and directory, it gets the union, each path once. The
+variable is always set, and empty when there are no files. In a POSIX shell:
+
+```markdown
+---
+glob: src/**/*.py
+verify: my-check $RULES_BY_TRIGGER_FILES
+---
+```
+
+An unquoted expansion splits on whitespace, so a path containing a space
+arrives as two arguments; a script that has to cope reads the variable itself,
+one line at a time.
 
 **What comes back.** A failure holds the turn open (`decision: block`) and
 hands Claude, for each failed command, the name of the rule that asked for it,

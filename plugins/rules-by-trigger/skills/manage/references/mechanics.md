@@ -36,11 +36,12 @@ or `config.json`.
   content.
 - Bash access (`cat`, `sed -i`) does NOT trigger injection; only the five file
   tools and the tools a `call:` can name (`Skill`, today) do.
-- The user sees one terminal line per tool call that injected a rule, naming
-  every rule it injected (marking repeats, new versions and subagent calls).
-  It rides on `systemMessage`, which Claude Code shows to the user, and adds
-  nothing to `additionalContext`, the text the hook injects for the model.
-  `"show_injections": false` in the GLOBAL config turns it off; a project
+- The user sees one terminal block per tool call that injected a rule: a
+  `rules-by-trigger:` header, then one line per rule injected (tagging a
+  global-scope rule `[global]`, marking repeats and new versions on the
+  rule's own line, and subagent calls on the header). It rides on `systemMessage`, which Claude Code shows to the user,
+  and adds nothing to `additionalContext`, the text the hook injects for the
+  model. `"show_injections": false` in the GLOBAL config turns it off; a project
   config cannot (a repository whose rules get injected must not be able to
   hide that from the user).
 - Scopes: every `.claude/rules-by-trigger/` from the touched file's directory up to
@@ -85,9 +86,22 @@ or `config.json`.
   rule with `tool: read` still verifies while its body never reaches the model
   for that write — `validate` says so.
 - Where: a project rule's commands run at the root of the project that owns the
-  rule, a global rule's at the root of the project of the file that triggered
-  it (the session's cwd when there is none). Each distinct command-and-directory
-  pair runs once, global scope first, then project scopes outermost first.
+  rule. A global rule's run at the first of these that exists for the file that
+  triggered it: the nearest directory above it holding a `.claude` (home
+  itself excluded), else the nearest holding a `.git` (a directory or a file, so
+  worktrees and submodules count; home excluded too), else the session's cwd.
+  Each distinct command-and-directory pair runs once, global scope first, then
+  project scopes outermost first, so one global rule over files in two
+  repositories runs twice, once in each.
+- Which files: the command reads `RULES_BY_TRIGGER_FILES`, the absolute paths
+  (as the tool named them, symlinks not resolved) of the files written this
+  turn that made it run, one per line: they matched the rule's glob and not its
+  `exclude`. When several rules share one command and directory, the run gets
+  the union of their files, each once. The variable is always set, empty when
+  there are no files. POSIX example: `verify: my-check $RULES_BY_TRIGGER_FILES`.
+  An unquoted expansion word-splits on whitespace, so a path with a space
+  arrives as two arguments; a script that must cope reads the variable itself,
+  one line at a time.
 - A failure holds the turn open and hands Claude the rule's name, the command,
   its exit code or timeout, and the last 60 lines it printed; the rule's body
   is not repeated. Commands that passed are one line to the USER and nothing to

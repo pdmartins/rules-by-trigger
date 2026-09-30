@@ -8,6 +8,7 @@ import os
 import shlex
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import util  # noqa: E402
@@ -353,6 +354,138 @@ class GlobalRuleDirectoryTest(VerifyEdgeCaseTestCase):
         self.assertNotIn(os.path.realpath(self.proj), reason,
                          "the nested project's own root is the answer, not the "
                          "session's cwd")
+
+
+class GlobalRuleGitRootTest(VerifyEdgeCaseTestCase):
+    """A global rule's command runs at the file's `.claude` project, else at
+    its git root, else at the session's cwd — and each job carries only the
+    files that belong to it."""
+
+    def setUp(self):
+        super().setUp()
+        self.assert_no_marker_above_the_fixture()
+
+    def assert_no_marker_above_the_fixture(self):
+        """The fixture's own result must not depend on where the machine keeps
+        its temp directories: a stray `.claude` or `.git` above the sandbox
+        would win over the fallback under test. Fail, never skip."""
+        directory = self.tmp.name
+        while True:
+            for entry in (HOOK.CLAUDE_DIR_NAME, HOOK.GIT_ENTRY_NAME):
+                self.assertFalse(
+                    os.path.exists(os.path.join(directory, entry)),
+                    f"{directory} holds a {entry}: the temp base is not "
+                    f"neutral, so these tests would depend on the machine")
+            parent = os.path.dirname(directory)
+            if parent == directory:
+                return
+            directory = parent
+
+    def tree(self, name, git=None, claude=False):
+        """A directory with `src/`; `.git` as a "dir" or a "file" and/or a
+        `.claude`."""
+        root = os.path.join(self.tmp.name, name)
+        os.makedirs(os.path.join(root, "src"))
+        if git == "dir":
+            os.makedirs(os.path.join(root, ".git"))
+        elif git == "file":
+            util.write_file(os.path.join(root, ".git"), "gitdir: /elsewhere\n")
+        if claude:
+            util.write_file(os.path.join(root, ".claude", "settings.json"), "{}")
+        return root
+
+    def global_rule(self, command, *globs):
+        util.write_rule(self.home, "BUSN_all.md",
+                        [glob.replace(os.sep, "/") for glob in globs],
+                        "Global.", extra_frontmatter=[f"verify: {command}"])
+
+    def jobs(self, *paths):
+        with mock.patch.dict(os.environ, {"HOME": self.home,
+                                          "USERPROFILE": self.home}):
+            jobs, _deferred = HOOK.collect_jobs(list(paths), self.proj)
+        return jobs
+
+    def test_a_git_directory_with_no_claude_is_the_root(self):
+        repo = self.tree("repo", git="dir")
+        self.global_rule(PRINT_CWD, f"{repo}/src/**")
+        self.wrote(self.source(root=repo))
+        reason = self.verify(cwd=self.proj)["reason"]
+        self.assertIn(os.path.realpath(repo), reason)
+        self.assertNotIn(os.path.realpath(self.proj), reason)
+
+    def test_a_git_file_with_no_claude_is_the_root(self):
+        """A worktree or a submodule keeps its `.git` as a file."""
+        repo = self.tree("worktree", git="file")
+        self.global_rule(PRINT_CWD, f"{repo}/src/**")
+        self.wrote(self.source(root=repo))
+        reason = self.verify(cwd=self.proj)["reason"]
+        self.assertIn(os.path.realpath(repo), reason)
+        self.assertNotIn(os.path.realpath(self.proj), reason)
+
+    def test_with_neither_claude_nor_git_it_runs_at_the_sessions_cwd(self):
+        loose = self.tree("loose")
+        self.global_rule(PRINT_CWD, f"{loose}/src/**")
+        self.wrote(self.source(root=loose))
+        reason = self.verify(cwd=self.proj)["reason"]
+        self.assertIn(os.path.realpath(self.proj), reason)
+        self.assertNotIn(os.path.realpath(loose), reason)
+
+    def test_a_claude_project_still_wins_over_a_git_root_below_it(self):
+        repo = self.tree("repo", claude=True)
+        inner = os.path.join(repo, "sub")
+        os.makedirs(os.path.join(inner, ".git"))
+        os.makedirs(os.path.join(inner, "src"))
+        self.global_rule(PRINT_CWD, f"{inner}/src/**")
+        self.wrote(self.source(root=inner))
+        reason = self.verify(cwd=self.proj)["reason"]
+        self.assertIn(os.path.realpath(repo), reason)
+        self.assertNotIn(os.path.realpath(inner), reason)
+
+    def test_a_git_repository_at_home_is_not_a_root(self):
+        """Dotfiles repositories are common: home is skipped like it is for
+        `.claude`, and a repository below it still counts."""
+        os.makedirs(os.path.join(self.home, ".git"))
+        loose = os.path.join(self.home, "loose", "src")
+        os.makedirs(loose)
+        nested = os.path.join(self.home, "nested")
+        os.makedirs(os.path.join(nested, ".git"))
+        with mock.patch.dict(os.environ, {"HOME": self.home}):
+            self.assertIsNone(HOOK.git_root_of(loose))
+            self.assertEqual(HOOK.git_root_of(os.path.join(nested, "x")), nested)
+
+    def test_a_project_rule_still_runs_at_its_own_base(self):
+        """A `.git` closer to the file than the rule's own base changes
+        nothing for a project rule."""
+        os.makedirs(os.path.join(self.proj, "src", ".git"))
+        util.write_rule(self.proj, "CONV_src.md", "src/**", "Rule.",
+                        extra_frontmatter=[f"verify: {PRINT_CWD}"])
+        self.wrote(self.source())
+        reason = self.verify(cwd=self.tmp.name)["reason"]
+        self.assertTrue(reason.endswith("\n" + os.path.realpath(self.proj)),
+                      "the base itself, not the directory holding the `.git`")
+
+    def test_files_in_two_repositories_make_two_jobs_with_their_own_files(self):
+        first, second = self.tree("repo_a", git="dir"), self.tree("repo_b", git="file")
+        self.global_rule(MARKER, f"{first}/src/**", f"{second}/src/**")
+        one = self.source(root=first, rel="src/one.py")
+        two = self.source(root=first, rel="src/two.py")
+        three = self.source(root=second, rel="src/three.py")
+        jobs = self.jobs(one, three, two)
+        self.assertEqual(sorted((job.cwd, job.files) for job in jobs),
+                         sorted([(first, [one, two]), (second, [three])]))
+
+    def test_two_rules_sharing_a_command_share_one_job_and_the_union_of_files(self):
+        first = self.tree("repo_a", git="dir")
+        util.write_rule(self.home, "BUSN_a.md", f"{first}/src/*.py", "A.",
+                        extra_frontmatter=[f"verify: {MARKER}"])
+        util.write_rule(self.home, "BUSN_b.md", f"{first}/src/**", "B.",
+                        extra_frontmatter=[f"verify: {MARKER}"])
+        one = self.source(root=first, rel="src/one.py")
+        two = self.source(root=first, rel="src/deep/two.py")
+        jobs = self.jobs(one, two)
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0].files, [one, two], "each once, first seen first")
+        self.assertEqual(len(jobs[0].rules), 2)
 
 
 class VerifyInvariantsTest(VerifyEdgeCaseTestCase):

@@ -16,7 +16,7 @@ import os
 import signal
 import subprocess
 
-from .constants import (VERIFY_COMMAND_TIMEOUT_SECONDS,
+from .constants import (FILES_ENV_VAR, VERIFY_COMMAND_TIMEOUT_SECONDS,
                         VERIFY_KILL_DRAIN_SECONDS, VERIFY_OUTPUT_CUT_MARKER,
                         VERIFY_OUTPUT_TAIL_LINES, VERIFY_OUTPUT_TAIL_MAX_CHARS,
                         warn)
@@ -104,8 +104,14 @@ def stop_process_tree(process):
         warn(f"could not kill the verification command: {exc}")
 
 
-def run_command(command, cwd, timeout=VERIFY_COMMAND_TIMEOUT_SECONDS):
+def run_command(command, cwd, timeout=VERIFY_COMMAND_TIMEOUT_SECONDS,
+                files=()):
     """Run one verification command in `cwd` and report what became of it.
+
+    `files` are the absolute paths of the written files that made it run. They
+    reach the command as `RULES_BY_TRIGGER_FILES`, one per line. The variable
+    is ALWAYS set, to the empty string when there are none, so a value the
+    parent process happened to inherit can never be mistaken for this run's.
 
     Through the system shell, because a shell command line is what a rule
     writes in `verify:` — `pytest -q && ruff check .` is one verification, not
@@ -130,9 +136,10 @@ def run_command(command, cwd, timeout=VERIFY_COMMAND_TIMEOUT_SECONDS):
     output is read into memory whole and only then tailed. The per-command
     timeout is what bounds it in practice, and the command is one the user's
     own rule asked for."""
+    env = {**os.environ, FILES_ENV_VAR: "\n".join(files)}
     try:
         process = subprocess.Popen(
-            command, shell=True, cwd=cwd, stdin=subprocess.DEVNULL,
+            command, shell=True, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             **NEW_SESSION_KWARGS)
     except Exception as exc:

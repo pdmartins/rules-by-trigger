@@ -153,7 +153,8 @@ writing it, and say which one fails if one does:
 
 - it **exists in that repository**, run from its root — a project rule's
   commands run at its own project root, a global rule's at the root of the
-  project of the file that triggered it;
+  project (`.claude`) or, failing that, the git repository of the file that
+  triggered it, else the session's cwd;
 - it is **deterministic**: same files in, same verdict out. A flaky check holds
   the turn open for a reason nobody can act on;
 - it is **fast enough for the budget**: 120 s per command, 540 s for everything
@@ -165,6 +166,9 @@ writing it, and say which one fails if one does:
 <the body, unchanged>
 EOF
 ```
+
+The command reads the written files that triggered it, one absolute path per
+line, in `$RULES_BY_TRIGGER_FILES` (unquoted, it splits on whitespace).
 
 `add` takes the same flag, for a rule that is born with a check. Repeat
 `--verify` for several commands; `--verify none` removes them all. Read back

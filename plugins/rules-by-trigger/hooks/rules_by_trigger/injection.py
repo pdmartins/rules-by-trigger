@@ -57,8 +57,14 @@ def over_budget(blocks, text, what):
     return True
 
 
-def build_blocks(candidates, config, injected_rules, call_number, tokens, agent_prefix):
+def build_blocks(candidates, config, injected_rules, call_number, tokens,
+                 agent_prefix, global_scope_dir=None):
     """The deliveries this tool call should inject, in candidate order.
+
+    `global_scope_dir` is the machine owner's scope directory, taken from the
+    call's scope list (see `discovery.global_scope`), or None when the call
+    reached none; a block records whether its rule came from exactly that
+    scope, so the notice can tag it without guessing from paths.
 
     A candidate is delivered when this context (`agent_prefix`: the main
     conversation or one subagent) has not seen this exact version of it, or
@@ -111,7 +117,8 @@ def build_blocks(candidates, config, injected_rules, call_number, tokens, agent_
             injected_rules, scope_dir, name, digest, agent_prefix)
         blocks.append({"name": name, "text": text, "truncated": truncated,
                        "superseded": superseded, "scope_dir": scope_dir,
-                       "glob": glob, "repeat": reinjections > 0})
+                       "glob": glob, "repeat": reinjections > 0,
+                       "is_global": scope_dir == global_scope_dir})
         injected_rules[key] = [call_number, tokens, reinjections]
     return blocks
 
@@ -160,8 +167,10 @@ def deliver(payload, tool_name, scopes, candidates, legacy_scopes, abs_path):
             injected_rules = state["injected_rules"]
             agent_prefix = agent_key_prefix(payload)
 
+            owner = global_scope(scopes)
             blocks = build_blocks(candidates, config, injected_rules, call_number,
-                                  tokens, agent_prefix)
+                                  tokens, agent_prefix,
+                                  owner[1] if owner else None)
 
             # The legacy notice is told once per scope per context. Repeating it
             # on every tool call would be noise the user cannot silence except by

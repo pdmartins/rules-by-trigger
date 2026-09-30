@@ -203,8 +203,8 @@ def sanitize_rule_size(raw, source, trusted):
 
 
 def sanitize_show_injections(raw, source, trusted):
-    """Whether the user sees a terminal line naming the rules a tool call
-    injected, or None when this layer says nothing usable about it.
+    """Whether the user sees a terminal block (a header, then one line per
+    rule) naming the rules a tool call injected, or None when this layer says nothing usable about it.
 
     Trusted in one direction only, the way `rule_size` is: an untrusted
     (project) layer may turn the notice ON — `true` — but never OFF. A repository whose rules get injected must not be able to hide from
@@ -382,8 +382,8 @@ def language(config):
 
 
 def show_injections(config):
-    """Whether the user sees a terminal line naming the rules a tool call
-    injected. True when no layer sets it — the shipped default — since the
+    """Whether the user sees a terminal block (a header, then one line per
+    rule) naming the rules a tool call injected. True when no layer sets it — the shipped default — since the
     notice is meant to be seen unless the machine owner turns it off."""
     value = (config or {}).get(SHOW_INJECTIONS_KEY)
     return True if value is None else value

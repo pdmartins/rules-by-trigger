@@ -1,4 +1,4 @@
-"""The terminal line the user sees when a tool call injects rules
+"""The terminal block the user sees when a tool call injects rules
 (rules_by_trigger.notice), and the `show_injections` config key that turns it
 off — trusted in one direction only, the way `rule_size` is (see
 rules_by_trigger.config.sanitize_show_injections)."""
@@ -29,24 +29,54 @@ def legacy_block():
     return {"name": "legacy-format", "text": "migrate me"}
 
 
+def header(suffix=""):
+    """The header line as `build_notice_line` must emit it: one space of
+    padding inside the colour on both sides."""
+    return (f"{HOOK.NOTICE_COLOUR} {HOOK.NOTICE_MARKER}{suffix} "
+            f"{HOOK.NOTICE_COLOUR_RESET}")
+
+
+def item(name):
+    """A rule line: two spaces before the bullet (the padding plus one of
+    indent), one space of padding after the name."""
+    return (f"{HOOK.NOTICE_COLOUR}  {HOOK.NOTICE_RULE_BULLET} {name} "
+            f"{HOOK.NOTICE_COLOUR_RESET}")
+
+
 class NoticeLineTest(unittest.TestCase):
     """`build_notice_line` in isolation: no subprocess, no config layer."""
 
-    def test_a_single_first_delivery_names_the_rule_with_no_suffix(self):
+    def test_a_single_first_delivery_is_a_header_and_one_bare_item(self):
         line = HOOK.build_notice_line([rule_block("CONV_api.md")], EN, False)
-        self.assertEqual(
-            line, f"\n{HOOK.NOTICE_COLOUR} {HOOK.NOTICE_MARKER} CONV_api.md "
-                  f"{HOOK.NOTICE_COLOUR_RESET}")
+        self.assertEqual(line, "\n" + header() + "\n" + item("CONV_api.md"))
 
-    def test_a_repeat_carries_the_repeat_suffix(self):
+    def test_the_visible_text_is_the_marker_then_the_indented_bullets(self):
+        line = HOOK.build_notice_line(
+            [rule_block("A.md"), rule_block("B.md")], EN, False)
+        visible = line.replace(HOOK.NOTICE_COLOUR, "").replace(
+            HOOK.NOTICE_COLOUR_RESET, "")
+        self.assertEqual(
+            visible, "\n rules-by-trigger: \n  \U0001F489 A.md \n  \U0001F489 B.md ")
+
+    def test_a_repeat_carries_the_repeat_suffix_on_its_own_line(self):
         line = HOOK.build_notice_line([rule_block("CONV_api.md", repeat=True)],
                                       EN, False)
-        self.assertIn("CONV_api.md (repeat)", line)
+        self.assertEqual(line, "\n" + header() + "\n"
+                         + item("CONV_api.md (repeat)"))
 
-    def test_a_superseded_block_carries_the_new_version_suffix(self):
+    def test_a_superseded_block_carries_the_new_version_suffix_on_its_own_line(self):
         line = HOOK.build_notice_line(
             [rule_block("CONV_api.md", superseded=True)], EN, False)
-        self.assertIn("CONV_api.md (new version)", line)
+        self.assertEqual(line, "\n" + header() + "\n"
+                         + item("CONV_api.md (new version)"))
+
+    def test_a_suffix_belongs_to_its_own_rule_only(self):
+        line = HOOK.build_notice_line(
+            [rule_block("A.md", repeat=True), rule_block("B.md"),
+             rule_block("C.md", superseded=True)], EN, False)
+        self.assertEqual(line, "\n" + "\n".join(
+            [header(), item("A.md (repeat)"), item("B.md"),
+             item("C.md (new version)")]))
 
     def test_repeat_and_superseded_never_apply_to_the_same_block(self):
         # A block with both flags set (which build_blocks never produces) is
@@ -56,14 +86,36 @@ class NoticeLineTest(unittest.TestCase):
         self.assertIn("(repeat)", line)
         self.assertNotIn("new version", line)
 
-    def test_every_injected_rule_is_listed_in_block_order(self):
+    def test_every_injected_rule_gets_its_own_line_in_block_order(self):
         line = HOOK.build_notice_line(
             [rule_block("CONV_api.md"), rule_block("SEC_auth.md")], EN, False)
-        self.assertIn("CONV_api.md, SEC_auth.md", line)
+        self.assertEqual(line, "\n" + "\n".join(
+            [header(), item("CONV_api.md"), item("SEC_auth.md")]))
 
-    def test_a_subagent_marker_is_appended_once_to_the_whole_line(self):
-        line = HOOK.build_notice_line([rule_block("CONV_api.md")], EN, True)
-        self.assertIn("CONV_api.md (subagent)", line)
+    def test_the_block_starts_with_a_newline_and_has_no_trailing_one(self):
+        line = HOOK.build_notice_line(
+            [rule_block("A.md"), rule_block("B.md")], EN, False)
+        self.assertTrue(line.startswith("\n" + HOOK.NOTICE_COLOUR))
+        self.assertTrue(line.endswith(HOOK.NOTICE_COLOUR_RESET))
+        self.assertEqual(line.count("\n"), 3)
+
+    def test_every_line_is_wrapped_in_its_own_colour_and_reset(self):
+        line = HOOK.build_notice_line(
+            [rule_block("A.md"), rule_block("B.md")], EN, False)
+        lines = line[1:].split("\n")
+        self.assertEqual(len(lines), 3)
+        for text in lines:
+            with self.subTest(line=text):
+                self.assertTrue(text.startswith(HOOK.NOTICE_COLOUR + " "))
+                self.assertTrue(text.endswith(" " + HOOK.NOTICE_COLOUR_RESET))
+                self.assertEqual(text.count(HOOK.NOTICE_COLOUR), 1)
+                self.assertEqual(text.count(HOOK.NOTICE_COLOUR_RESET), 1)
+
+    def test_the_subagent_marker_goes_once_at_the_end_of_the_header_only(self):
+        line = HOOK.build_notice_line(
+            [rule_block("A.md"), rule_block("B.md")], EN, True)
+        self.assertEqual(line, "\n" + "\n".join(
+            [header(" (subagent)"), item("A.md"), item("B.md")]))
         self.assertEqual(line.count("(subagent)"), 1)
 
     def test_the_legacy_notice_alone_names_no_rule(self):
@@ -75,14 +127,14 @@ class NoticeLineTest(unittest.TestCase):
     def test_a_legacy_notice_beside_a_rule_only_names_the_rule(self):
         line = HOOK.build_notice_line([legacy_block(), rule_block("CONV_api.md")],
                                       EN, False)
-        self.assertIn("CONV_api.md", line)
+        self.assertEqual(line, "\n" + header() + "\n" + item("CONV_api.md"))
         self.assertNotIn("legacy-format", line)
 
     def test_portuguese_labels(self):
         line = HOOK.build_notice_line([rule_block("CONV_api.md", repeat=True)],
                                       PT_BR, True)
-        self.assertIn("(repetição)", line)
-        self.assertIn("(subagente)", line)
+        self.assertEqual(line, "\n" + header(" (subagente)") + "\n"
+                         + item("CONV_api.md (repetição)"))
         self.assertNotIn("(repeat)", line)
 
 
@@ -178,6 +230,11 @@ class ShowInjectionsEndToEndTest(util.SandboxTestCase):
         self.assertIn(HOOK.NOTICE_COLOUR, message)
         self.assertIn(HOOK.NOTICE_COLOUR_RESET, message)
         self.assertNotIn("(repeat)", message)
+
+    def test_the_message_is_a_header_line_then_one_line_per_rule(self):
+        output, _ = self.system_message(session="s10")
+        self.assertEqual(output["systemMessage"],
+                         "\n" + header() + "\n" + item("CONV_api.md"))
 
     def test_a_reinjection_is_labelled_a_repeat(self):
         self.system_message(session="s2")

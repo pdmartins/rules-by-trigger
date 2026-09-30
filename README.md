@@ -353,11 +353,21 @@ identifiers, not prose, and never translate.
 
 ### `show_injections`
 
-Every tool call that injects a rule also prints one terminal line naming it —
-`rules-by-trigger: CONV_api.md`, with `(repeat)` or `(new version)` per rule
-and `(subagent)` when the call ran inside one. It is for the person watching
-the terminal: it travels on the hook's `systemMessage` field, which Claude
-Code shows to the user, and the text injected for the model
+Every tool call that injects a rule also prints a short block naming what it
+injected: a `rules-by-trigger:` header, then one line per rule, with
+`(repeat)` or `(new version)` after the rule that earned it and `(subagent)`
+at the end of the header when the call ran inside one:
+
+```
+PreToolUse:Read says:
+ rules-by-trigger:
+  💉 CONV_api.md
+  💉 SEC_auth.md (repeat)
+```
+
+It is for the person watching the terminal: it travels on the hook's
+`systemMessage` field, which Claude Code shows to the user, and the text
+injected for the model
 (`additionalContext`) is the same with or without it.
 `show_injections: false` turns it off, but only from
 `~/.claude/rules-by-trigger/config.json`, the machine owner's own layer — a

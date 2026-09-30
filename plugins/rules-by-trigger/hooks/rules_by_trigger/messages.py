@@ -33,14 +33,17 @@ from .constants import (ADMIN_COMMAND, BRAZILIAN_PORTUGUESE, DEFAULT_LANGUAGE,
                         SESSION_NOTICE, SUPERSEDE_NOTICE, TRUNCATION_NOTICES,
                         warn)
 
-# --- user-visible: the injection notice's colour ----------------------------
-# The terminal line `notice.py` builds for the user (see its own docstring).
+# --- user-visible: the injection notice's colour and bullet -----------------
+# The terminal block `notice.py` builds for the user (see its own docstring).
 # Light text on dark blue, ANSI 256-colour SGR codes:
 # honoured by the harness even though it discards cursor-movement sequences.
+# The bullet opens each rule's line; it is language-independent, so it lives
+# here rather than in the per-language table.
 # Named constants rather than literals inside `notice.py`'s logic, kept next
 # to the translation table because both are the plugin's user-visible text.
 NOTICE_COLOUR = "\033[38;5;253;48;5;24m"
 NOTICE_COLOUR_RESET = "\033[0m"
+NOTICE_RULE_BULLET = "💉"
 # ------------------------------------------------------------------------
 
 # The keys one row holds. They are the names the constants already carry, so a

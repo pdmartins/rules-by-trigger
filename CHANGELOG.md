@@ -5,8 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
-`verify:` commands learn which files triggered them, and a global rule's
-command finds a git repository's root when the file has no `.claude` project.
+`verify:` commands see the files that triggered them, a global rule's command
+finds the git root when the file has no `.claude`, and the notice is per rule.
 
 ### Added
 
@@ -21,6 +21,13 @@ command finds a git repository's root when the file has no `.claude` project.
 
 ### Changed
 
+- **The injection notice lists one rule per line.** It was one line with the
+  names separated by commas; it is now a `rules-by-trigger:` header followed by
+  a `💉`-marked line per rule, each carrying its own `(repeat)` or
+  `(new version)`, and the `(subagent)` marker moves to the end of the header.
+  Each line is coloured on its own. `additionalContext` and `show_injections`
+  are unchanged. Why: with several rules in one call the comma-separated line
+  ran long and its suffixes were hard to tell apart.
 - **A global rule's command runs at the file's git root before the session's
   cwd.** The order is now: the nearest ancestor holding a `.claude`, else the
   nearest holding a `.git` (a directory or a file, so worktrees and submodules

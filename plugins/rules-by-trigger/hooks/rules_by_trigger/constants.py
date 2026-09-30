@@ -264,8 +264,8 @@ LANGUAGE_FORBIDDEN_CHARS = "\u115f\u1160\u3164\uffa0"
 DEFAULT_LANGUAGE = "en"
 BRAZILIAN_PORTUGUESE = "pt-BR"
 
-# Whether the user sees a terminal line naming the rules a tool call injected
-# (see notice.py). A `config.json` key like `language`, but trusted in only
+# Whether the user sees a terminal block (a header, then one line per rule)
+# naming the rules a tool call injected (see notice.py). A `config.json` key like `language`, but trusted in only
 # one direction: a repository whose rules get injected must not be able to
 # hide from the user that they are, so only the user's OWN layer may turn it
 # off — a project layer may switch it back on, never off.
@@ -276,8 +276,9 @@ SHOW_INJECTIONS_KEY = "show_injections"
 # is defanged from emitting them (see FORGED_FRAMING_TOKENS).
 HARNESS_MARKER = "[rules-by-trigger (rbt)]"
 
-# What every injection notice line opens with (see notice.py). A marker, not
-# prose, so it stays the same in every language — like HARNESS_MARKER above.
+# What the injection notice's header line opens with (see notice.py); the rule
+# lines below it open with padding, an indent and the bullet instead. A marker,
+# not prose, so it stays the same in every language — like HARNESS_MARKER above.
 NOTICE_MARKER = "rules-by-trigger:"
 
 LEGACY_NOTICE = (

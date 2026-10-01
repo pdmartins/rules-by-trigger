@@ -104,8 +104,12 @@ or `config.json`.
   one line at a time.
 - A failure holds the turn open and hands Claude the rule's name, the command,
   its exit code or timeout, and the last 60 lines it printed; the rule's body
-  is not repeated. Commands that passed are one line to the USER and nothing to
-  the model.
+  is not repeated. On a blocked turn the report also lists the commands that
+  passed, one line each. When nothing failed, the model is told nothing.
+- The USER always gets a coloured block, in the layout of the injection
+  notice: a header with the counts, then one line per rule — failed, passed,
+  not run, then rules whose `verify:` was written in this session. Passed rules
+  are listed too, also on a blocked turn. It names the rule, not the command.
 - A command that never ran — the turn's budget was already spent, or the
   process could not be started — is not a failure: it holds nothing open and
   counts nothing, since it verified nothing. The user is told; the model only

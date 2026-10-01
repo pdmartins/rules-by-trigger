@@ -113,8 +113,11 @@ class VerifyHookTest(util.SandboxTestCase):
         self.wrote("src/a.py")
         output = util.hook_output(self.verify())
         self.assertNotIn("decision", output, "a passing turn is not held open")
-        self.assertIn("rules-by-trigger: verified", output["systemMessage"])
-        self.assertIn("CONV_src.md", output["systemMessage"])
+        self.assertIn(HOOK.VERIFY_PASSED_COLOUR, output["systemMessage"])
+        self.assertIn("rules-by-trigger: verifications passed (1/1)",
+                      output["systemMessage"])
+        self.assertIn(f"{HOOK.VERIFY_PASSED_ICON} CONV_src.md",
+                      output["systemMessage"])
 
     def test_a_second_verification_with_no_new_write_says_nothing(self):
         """What ends the correction loop (spec Q10): the list was taken."""
@@ -369,13 +372,13 @@ class ReportTemplatesTest(unittest.TestCase):
                 self.assertIn("the output", report)
                 self.assertIn("fine", report, "and what passed")
 
-    def test_every_language_names_the_command_in_the_users_line(self):
+    def test_every_language_names_the_rule_and_not_the_command_for_the_user(self):
         for code in HOOK.SHIPPED_LANGUAGES:
             with self.subTest(language=code):
-                line = HOOK.build_system_message(self.results()[1:],
-                                                 HOOK.messages_for(code))
-                self.assertIn("fine", line)
-                self.assertIn("CONV_x.md", line)
+                block = HOOK.build_system_message(self.results()[1:],
+                                                  HOOK.messages_for(code))
+                self.assertIn("CONV_x.md", block)
+                self.assertNotIn("fine", block, "the command is not shown")
 
     def test_every_language_says_which_clock_ran_out(self):
         for code in HOOK.SHIPPED_LANGUAGES:

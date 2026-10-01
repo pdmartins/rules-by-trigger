@@ -1,5 +1,5 @@
 """What a turn's verifications come back as: the reason Claude reads when the
-turn is held open, and the line the user reads when it is not.
+turn is held open, and the coloured block the user reads, held open or not.
 
 Split from `verify.py`, which owns which commands run, in what order and under
 which clock. The two halves are separate because they answer to different
@@ -13,19 +13,27 @@ from a rule file or from a command's output passes through `neutralize` on the
 way in, because the report is text the model reads with the harness's own
 authority."""
 
-from .constants import MAX_TOTAL_CHARS, warn
+from .constants import MAX_TOTAL_CHARS, NOTICE_MARKER, warn
 from .context import neutralize
-from .messages import (VERIFY_ERROR_KEY, VERIFY_EXIT_CODE_KEY,
-                       VERIFY_FAILURE_KEY, VERIFY_NO_OUTPUT_KEY,
-                       VERIFY_NOT_RUN_HEADER_KEY, VERIFY_NOT_RUN_KEY,
+from .messages import (NOTICE_COLOUR, NOTICE_GLOBAL_KEY, VERIFY_DEFERRED_ICON,
+                       VERIFY_ERROR_KEY, VERIFY_EXIT_CODE_KEY,
+                       VERIFY_FAILED_COLOUR, VERIFY_FAILED_ICON,
+                       VERIFY_FAILURE_KEY, VERIFY_ITEM_STATUS_SEPARATOR,
+                       VERIFY_NO_OUTPUT_KEY, VERIFY_NOT_RUN_HEADER_KEY,
+                       VERIFY_NOT_RUN_ICON, VERIFY_NOT_RUN_KEY,
                        VERIFY_NOT_STARTED_KEY, VERIFY_OUT_OF_TIME_KEY,
+                       VERIFY_PASSED_COLOUR, VERIFY_PASSED_ICON,
                        VERIFY_PASSED_KEY, VERIFY_REPORT_CUT_KEY,
-                       VERIFY_REPORT_HEADER_KEY, VERIFY_SYSTEM_MESSAGE_KEY,
-                       VERIFY_SYSTEM_NOT_RUN_KEY,
-                       VERIFY_SYSTEM_RULE_WRITTEN_KEY, VERIFY_TIMED_OUT_KEY)
+                       VERIFY_REPORT_HEADER_KEY, VERIFY_TIMED_OUT_KEY,
+                       VERIFY_USER_DEFERRED_KEY, VERIFY_USER_FAILED_KEY,
+                       VERIFY_USER_NONE_KEY, VERIFY_USER_PASSED_KEY)
+from .notice import NOTICE_ITEM_INDENT, coloured_block
 from .verifyrun import (DID_NOT_RUN_STATUSES, STATUS_ERROR, STATUS_FAILED,
                         STATUS_NOT_STARTED, STATUS_OUT_OF_TIME, STATUS_PASSED,
                         STATUS_TIMED_OUT)
+
+# How bad a command's outcome is for its rule; the worst one is the rule's.
+RANK_PASSED, RANK_NOT_RUN, RANK_FAILED = range(3)
 
 # Which sentence describes a status. PASSED is absent on purpose: a passing
 # command has a summary line and no status line of its own.
@@ -127,29 +135,103 @@ def not_run_line(job, result, messages):
         status=status_line(result, messages))
 
 
-def build_system_message(results, messages, deferred=()):
-    """The lines for the USER and not for Claude (spec Q15).
+def verify_item(icon, name, messages, status=None, is_global=False):
+    """One rule's line in the user's block, before colouring: indent, icon, the
+    tag that marks a rule from the global scope (same as the injection notice),
+    the rule's name and, for anything that did not pass, what became of it.
+    The name is neutralized like everything else that came from a rule file."""
+    tag = f"{messages[NOTICE_GLOBAL_KEY]} " if is_global else ""
+    line = f"{NOTICE_ITEM_INDENT}{icon} {tag}{neutralize(name)}"
+    if status:
+        line += f"{VERIFY_ITEM_STATUS_SEPARATOR}{status}"
+    return line
 
-    Three things belong to the user alone. A verification that passed is not
-    news the model has to spend context on; it is the user who asked for the
-    check and wants to see it ran. A verification that never ran is not
-    something the model can act on either, but the user can — it is their
-    budget and their environment. And a `verify:` this session's own writes put
-    into a rule file is deferred to the next session (see
-    `record_rules_written`), which the user must be told about, since it is the
-    only sign that a rule they just wrote is not yet running.
 
-    A command that ran and failed gets no line here: it is in the report the
-    model reads, and this message is printed when there is no report."""
-    lines = []
+def outcome_rank(result):
+    """How bad one command's outcome is for the rule that asked for it: a
+    command that RAN and did not pass outranks one that never ran, which
+    outranks one that passed (the same three-way split as `split_results`)."""
+    if result.status == STATUS_PASSED:
+        return RANK_PASSED
+    if result.status in DID_NOT_RUN_STATUSES:
+        return RANK_NOT_RUN
+    return RANK_FAILED
+
+
+def merge_by_rule(results):
+    """{(scope_dir, name): (rank, result)} — one entry per RULE, in the order
+    the rules first appear in `results`.
+
+    A rule can own several commands (two `verify:` entries) and a command can
+    run more than once for it (a global rule in two directories), and the user
+    reads one line per rule. The entry kept is the worst outcome among the
+    rule's commands (`outcome_rank`), and among equals the first in results
+    order, so a failing rule shows the status text of its first failure. A job
+    built without rules (only tests do) is its own rule, identified by its
+    `name`."""
+    merged = {}
     for job, result in results:
-        if result.status in DID_NOT_RUN_STATUSES:
-            lines.append(messages[VERIFY_SYSTEM_NOT_RUN_KEY].format(
-                command=neutralize(job.command), name=neutralize(job.name),
-                status=status_line(result, messages)))
-        elif result.status == STATUS_PASSED:
-            lines.append(messages[VERIFY_SYSTEM_MESSAGE_KEY].format(
-                command=neutralize(job.command), name=neutralize(job.name)))
-    lines.extend(messages[VERIFY_SYSTEM_RULE_WRITTEN_KEY].format(
-        name=neutralize(name)) for name in deferred)
-    return "\n".join(lines)
+        rank = outcome_rank(result)
+        for identity in job.rules or [(None, job.name)]:
+            if identity not in merged or rank > merged[identity][0]:
+                merged[identity] = (rank, result)
+    return merged
+
+
+def build_system_message(results, messages, deferred=(), global_scope_dir=None):
+    """The coloured block for the USER and not for Claude (spec Q15), or None
+    when there is nothing to report — no result and no deferred rule.
+
+    It has the layout of the injection notice (see `notice.coloured_block`): a
+    header, then one indented line per rule, in this order: failed, passed, not
+    run, deferred. It lists everything, passed ones included, whether or not the
+    turn is held open: the model's reason (`build_report`) carries the failures'
+    output, and this is the user's own summary of the turn, so what is in the
+    one is not kept out of the other. The command is not shown, only the rule.
+
+    Green when everything that ran passed, red when anything failed, and the
+    notice's blue when nothing ran. Each rule has ONE line and is counted once
+    (`merge_by_rule`): its worst outcome among its commands, failed above not
+    run above passed. `ran` is the rules that failed or passed, so a rule whose
+    commands never ran is in neither count and shows as not run. (The model's
+    report counts commands.) Failed and not-run lines carry what became of the
+    command (`status_line`); a passed one needs no status. A rule whose `verify:` this session's own
+    writes put into its file is deferred to the next session (see
+    `record_rules_written`): the only sign the user has that a rule they just
+    wrote is not yet running.
+
+    `global_scope_dir` is the machine owner's rules directory, as the injection
+    knows it (see `discovery.global_scope`): a rule from it is tagged
+    `[global]`. Deferred rules arrive as bare names, so they carry no tag."""
+    if not results and not deferred:
+        return None
+    outcomes = merge_by_rule(results)
+
+    def items_of(rank, icon, with_status):
+        return [verify_item(
+            icon, name, messages,
+            status_line(result, messages) if with_status else None,
+            global_scope_dir is not None and scope_dir == global_scope_dir)
+            for (scope_dir, name), (item_rank, result) in outcomes.items()
+            if item_rank == rank]
+
+    failed_items = items_of(RANK_FAILED, VERIFY_FAILED_ICON, True)
+    passed_items = items_of(RANK_PASSED, VERIFY_PASSED_ICON, False)
+    ran = len(failed_items) + len(passed_items)
+    items = (failed_items + passed_items
+             + items_of(RANK_NOT_RUN, VERIFY_NOT_RUN_ICON, True)
+             + [verify_item(VERIFY_DEFERRED_ICON, name, messages,
+                            messages[VERIFY_USER_DEFERRED_KEY])
+                for name in deferred])
+    if failed_items:
+        colour = VERIFY_FAILED_COLOUR
+        summary = messages[VERIFY_USER_FAILED_KEY].format(
+            failed=len(failed_items), ran=ran)
+    elif passed_items:
+        colour = VERIFY_PASSED_COLOUR
+        summary = messages[VERIFY_USER_PASSED_KEY].format(
+            passed=len(passed_items), ran=ran)
+    else:
+        colour = NOTICE_COLOUR
+        summary = messages[VERIFY_USER_NONE_KEY]
+    return coloured_block([f"{NOTICE_MARKER} {summary}"] + items, colour)

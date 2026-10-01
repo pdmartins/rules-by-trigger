@@ -33,17 +33,30 @@ from .constants import (ADMIN_COMMAND, BRAZILIAN_PORTUGUESE, DEFAULT_LANGUAGE,
                         SESSION_NOTICE, SUPERSEDE_NOTICE, TRUNCATION_NOTICES,
                         warn)
 
-# --- user-visible: the injection notice's colour and bullet -----------------
-# The terminal block `notice.py` builds for the user (see its own docstring).
-# Light text on dark blue, ANSI 256-colour SGR codes:
-# honoured by the harness even though it discards cursor-movement sequences.
-# The bullet opens each rule's line; it is language-independent, so it lives
-# here rather than in the per-language table.
-# Named constants rather than literals inside `notice.py`'s logic, kept next
+# --- user-visible: the terminal blocks' colours, bullet and icons -----------
+# The terminal blocks the user reads: the injection notice `notice.py` builds
+# and the verification block `verifyreport.py` builds in the same layout.
+# Light text on a dark background, ANSI 256-colour SGR codes: honoured by the
+# harness even though it discards cursor-movement sequences. Blue is the
+# injection notice, and also the verification block when nothing ran; green
+# and red are the verification block when everything that ran passed and when
+# something failed.
+# The bullet opens each injected rule's line, and an icon opens each
+# verification line; all are language-independent, so they live here rather
+# than in the per-language table.
+# Named constants rather than literals inside the builders' logic, kept next
 # to the translation table because both are the plugin's user-visible text.
 NOTICE_COLOUR = "\033[38;5;253;48;5;24m"
+VERIFY_PASSED_COLOUR = "\033[38;5;253;48;5;22m"
+VERIFY_FAILED_COLOUR = "\033[38;5;253;48;5;88m"
 NOTICE_COLOUR_RESET = "\033[0m"
 NOTICE_RULE_BULLET = "💉"
+VERIFY_PASSED_ICON = "✅"
+VERIFY_FAILED_ICON = "❌"
+VERIFY_NOT_RUN_ICON = "⏭️"
+VERIFY_DEFERRED_ICON = "🕓"
+# Between a verification line's rule name and what became of it.
+VERIFY_ITEM_STATUS_SEPARATOR = " — "
 # ------------------------------------------------------------------------
 
 # The keys one row holds. They are the names the constants already carry, so a
@@ -71,9 +84,13 @@ VERIFY_PASSED_KEY = "VERIFY_PASSED"
 VERIFY_REPORT_CUT_KEY = "VERIFY_REPORT_CUT"
 VERIFY_NOT_RUN_HEADER_KEY = "VERIFY_NOT_RUN_HEADER"
 VERIFY_NOT_RUN_KEY = "VERIFY_NOT_RUN"
-VERIFY_SYSTEM_MESSAGE_KEY = "VERIFY_SYSTEM_MESSAGE"
-VERIFY_SYSTEM_NOT_RUN_KEY = "VERIFY_SYSTEM_NOT_RUN"
-VERIFY_SYSTEM_RULE_WRITTEN_KEY = "VERIFY_SYSTEM_RULE_WRITTEN"
+# The block the USER reads about them: a header per outcome, and the line of a
+# rule whose `verify:` was deferred (the rest of each line is the rule's name
+# and the status texts above).
+VERIFY_USER_PASSED_KEY = "VERIFY_USER_PASSED"
+VERIFY_USER_FAILED_KEY = "VERIFY_USER_FAILED"
+VERIFY_USER_NONE_KEY = "VERIFY_USER_NONE"
+VERIFY_USER_DEFERRED_KEY = "VERIFY_USER_DEFERRED"
 # Told to the model by the admin CLI (not the hook) on every subcommand except
 # `doctor`, `show` and `status --json`, until the machine has a `~/.claude/rules-by-trigger/config.json` —
 # see `scripts/rules_by_trigger_admin/setup.py`. It lives in this table like
@@ -95,9 +112,9 @@ MESSAGE_KEYS = (LEGACY_NOTICE_KEY, SESSION_NOTICE_KEY, TRUNCATION_NOTICE_KEY,
                 VERIFY_OUT_OF_TIME_KEY, VERIFY_NOT_STARTED_KEY,
                 VERIFY_ERROR_KEY, VERIFY_NO_OUTPUT_KEY, VERIFY_PASSED_KEY,
                 VERIFY_REPORT_CUT_KEY, VERIFY_NOT_RUN_HEADER_KEY,
-                VERIFY_NOT_RUN_KEY, VERIFY_SYSTEM_MESSAGE_KEY,
-                VERIFY_SYSTEM_NOT_RUN_KEY, VERIFY_SYSTEM_RULE_WRITTEN_KEY,
-                SETUP_NOTICE_KEY, NOTICE_REPEAT_KEY, NOTICE_NEW_VERSION_KEY,
+                VERIFY_NOT_RUN_KEY, VERIFY_USER_PASSED_KEY,
+                VERIFY_USER_FAILED_KEY, VERIFY_USER_NONE_KEY,
+                VERIFY_USER_DEFERRED_KEY, SETUP_NOTICE_KEY, NOTICE_REPEAT_KEY, NOTICE_NEW_VERSION_KEY,
                 NOTICE_SUBAGENT_KEY, NOTICE_GLOBAL_KEY)
 
 # Two spellings of the same separator, because a language code is written both
@@ -143,14 +160,12 @@ MESSAGES = {
             "fix; they are here so you know the check was incomplete."
         ),
         VERIFY_NOT_RUN_KEY: "{command} (rule {name!r}) — {status}",
-        VERIFY_SYSTEM_MESSAGE_KEY: ("rules-by-trigger: verified — {command} "
-                                    "(rule {name!r})"),
-        VERIFY_SYSTEM_NOT_RUN_KEY: ("rules-by-trigger: not run — {command} "
-                                    "(rule {name!r}): {status}"),
-        VERIFY_SYSTEM_RULE_WRITTEN_KEY: (
-            "rules-by-trigger: the verify: in rule {name!r} was written by this "
-            "session, so it runs from the next one"
-        ),
+        VERIFY_USER_PASSED_KEY: "verifications passed ({passed}/{ran})",
+        VERIFY_USER_FAILED_KEY: ("verifications failed ({failed}/{ran}) — "
+                                 "Claude got the report to fix it"),
+        VERIFY_USER_NONE_KEY: "no verification ran",
+        VERIFY_USER_DEFERRED_KEY: ("its verify: was written in this session; "
+                                   "it runs from the next one"),
         SETUP_NOTICE_KEY: (
             "rules-by-trigger is not set up on this machine yet "
             "(~/.claude/rules-by-trigger/config.json does not exist). Offer the "
@@ -220,14 +235,12 @@ MESSAGES = {
             "incompleta."
         ),
         VERIFY_NOT_RUN_KEY: "{command} (regra {name!r}) — {status}",
-        VERIFY_SYSTEM_MESSAGE_KEY: ("rules-by-trigger: verificado — {command} "
-                                    "(regra {name!r})"),
-        VERIFY_SYSTEM_NOT_RUN_KEY: ("rules-by-trigger: não executada — {command} "
-                                    "(regra {name!r}): {status}"),
-        VERIFY_SYSTEM_RULE_WRITTEN_KEY: (
-            "rules-by-trigger: o verify: da regra {name!r} foi escrito por esta "
-            "sessão, então ele passa a rodar a partir da próxima"
-        ),
+        VERIFY_USER_PASSED_KEY: "verificações ok ({passed}/{ran})",
+        VERIFY_USER_FAILED_KEY: ("verificações com falha ({failed}/{ran}) — o "
+                                 "Claude recebeu o relatório para corrigir"),
+        VERIFY_USER_NONE_KEY: "nenhuma verificação rodou",
+        VERIFY_USER_DEFERRED_KEY: ("o verify: foi escrito nesta sessão; roda a "
+                                   "partir da próxima"),
         SETUP_NOTICE_KEY: (
             "O rules-by-trigger ainda não foi configurado nesta máquina "
             "(~/.claude/rules-by-trigger/config.json não existe). Ofereça ao "

@@ -17,6 +17,7 @@ HOOK = util.load_hook_module()
 
 PYTHON = shlex.quote(sys.executable)
 MESSAGES = HOOK.messages_for(HOOK.DEFAULT_LANGUAGE)
+DEFERRED_TEXT = MESSAGES[HOOK.VERIFY_USER_DEFERRED_KEY]
 
 
 def python_command(source):
@@ -109,7 +110,7 @@ class RuleWrittenThisSessionTest(VerifyEdgeCaseTestCase):
         self.write_tool(self.source())
         output = self.verify()
         self.assertNotIn("decision", output, "nothing is held open")
-        self.assertIn("written by this session", output["systemMessage"])
+        self.assertIn(DEFERRED_TEXT, output["systemMessage"])
         self.assertIn(self.RULE, output["systemMessage"])
         self.assertFalse(self.ran_in(self.proj), "the command never ran")
         self.assertEqual(self.verifications(self.scope, self.RULE), 0,
@@ -128,7 +129,7 @@ class RuleWrittenThisSessionTest(VerifyEdgeCaseTestCase):
         self.assertNotIn(self.RULE, output["reason"],
                          "the deferred rule is not the model's business")
         self.assertIn(self.RULE, output["systemMessage"])
-        self.assertIn("written by this session", output["systemMessage"])
+        self.assertIn(DEFERRED_TEXT, output["systemMessage"])
 
     def test_the_order_of_the_two_writes_does_not_matter(self):
         """Editing the code first and the rule afterwards is the likelier
@@ -136,7 +137,7 @@ class RuleWrittenThisSessionTest(VerifyEdgeCaseTestCase):
         self.write_tool(self.source())
         self.write_tool(self.rule_path)
         output = self.verify()
-        self.assertIn("written by this session", output["systemMessage"])
+        self.assertIn(DEFERRED_TEXT, output["systemMessage"])
         self.assertFalse(self.ran_in(self.proj))
 
     def test_a_reset_keeps_the_rule_writes_and_clears_the_turn(self):
@@ -152,7 +153,7 @@ class RuleWrittenThisSessionTest(VerifyEdgeCaseTestCase):
                          "the turn's writes are gone")
         self.assertEqual(state["injected_rules"], {}, "and so is the dedup")
         self.write_tool(self.source())
-        self.assertIn("written by this session", self.verify()["systemMessage"])
+        self.assertIn(DEFERRED_TEXT, self.verify()["systemMessage"])
 
     def test_the_next_session_runs_it(self):
         """A new session id reads the file with no history of its own — the
@@ -161,7 +162,8 @@ class RuleWrittenThisSessionTest(VerifyEdgeCaseTestCase):
         self.write_tool(self.source(), session="s2")
         output = self.verify(session="s2")
         self.assertTrue(self.ran_in(self.proj))
-        self.assertIn("verified", output["systemMessage"])
+        self.assertIn(HOOK.VERIFY_PASSED_ICON, output["systemMessage"])
+        self.assertNotIn(DEFERRED_TEXT, output["systemMessage"])
 
     def test_a_rule_added_through_the_cli_runs_at_once(self):
         """The manage skill's own path goes through Bash, which is already a
@@ -227,11 +229,10 @@ class DidNotRunTest(VerifyEdgeCaseTestCase):
         killed = HOOK.CommandResult(HOOK.STATUS_OUT_OF_TIME, None, 120, "half")
         self.assertIsNotNone(HOOK.build_report([(job, killed)], MESSAGES))
 
-    def test_a_blocked_turn_reports_the_never_ran_line_and_not_the_passed_one(self):
-        """On a blocked turn the user's `systemMessage` carries the appendix
-        lines that are theirs alone — a command that never ran — and none of
-        the lines already sitting inside the model's report, such as a command
-        that passed (spec Q15; README's "one line each")."""
+    def test_a_blocked_turn_lists_everything_to_the_user(self):
+        """On a blocked turn the user's `systemMessage` is the same whole block
+        as on any other: the failure, the passed rule AND the command that
+        never ran — while the model's reason stays the failures' report."""
         loose = os.path.join(self.tmp.name, "loose")
         gone = os.path.join(self.tmp.name, "gone")
         os.makedirs(loose)
@@ -249,10 +250,12 @@ class DidNotRunTest(VerifyEdgeCaseTestCase):
         output = self.verify(cwd=gone)
         self.assertEqual(output.get("decision"), "block", output)
         message = output.get("systemMessage", "")
-        self.assertIn("not run", message, "the never-ran line reaches the user")
+        self.assertIn(HOOK.VERIFY_FAILED_ICON + " CONV_fail.md", message)
+        self.assertIn(HOOK.VERIFY_PASSED_ICON + " CONV_pass.md", message,
+                      "a passed rule is listed even when the turn is held open")
+        self.assertIn(HOOK.VERIFY_NOT_RUN_ICON + " [global] BUSN_never.md",
+                      message, "the never-ran line reaches the user")
         self.assertIn("could not be started", message)
-        self.assertNotIn("verified", message,
-                         "the passed command stays inside the model's report")
 
 
 class OutputCeilingTest(VerifyEdgeCaseTestCase):

@@ -5,6 +5,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
+### Changed
+
+- **The `verify:` result the user sees is a coloured block.** It has the layout
+  of the injection notice: a header with the counts, then one line per rule,
+  failed first, then passed, not run and deferred. It is green when everything
+  that ran passed, red when anything failed, blue when nothing ran. It names
+  the rule and no longer the command, and tags a global rule `[global]`. On a
+  turn held open for a failure it now lists the passed rules too, so the user
+  reads the whole result in one place; what Claude is sent does not change.
+  The result now reads like the injection notice instead of as loose lines.
+
 ## 0.10.0 — 2026-09-29
 
 `verify:` commands see the files that triggered them, a global rule's command

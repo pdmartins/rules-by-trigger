@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
+## 0.11.0 — 2026-09-30
+
 ### Changed
 
 - **The `verify:` result the user sees is a coloured block.** It has the layout

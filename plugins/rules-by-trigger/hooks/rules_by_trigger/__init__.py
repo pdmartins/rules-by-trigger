@@ -73,7 +73,7 @@ Layout — one concern per module, none over 400 lines:
     context.py      assembling the injected text, defanging forged framing
     verify.py       the Stop hook: which `verify:` commands a turn owes
     verifyrun.py    running one of them, and the tail of what it printed
-    verifyreport.py what comes back: the block reason, and the user's line
+    verifyreport.py what comes back: the block reason, and the user's block
     injection.py    turning matched candidates into a delivery, shared by
                     the path branch and the call branch of `main()`
     main.py         the four entry points Claude Code calls
@@ -147,8 +147,12 @@ from .messages import (ENFORCE_DENY_REASON_TEMPLATE_KEY,
                        VERIFY_NOT_RUN_KEY, VERIFY_NOT_STARTED_KEY,
                        VERIFY_OUT_OF_TIME_KEY, VERIFY_PASSED_KEY,
                        VERIFY_REPORT_CUT_KEY, VERIFY_REPORT_HEADER_KEY,
-                       VERIFY_SYSTEM_MESSAGE_KEY, VERIFY_SYSTEM_NOT_RUN_KEY,
-                       VERIFY_SYSTEM_RULE_WRITTEN_KEY, VERIFY_TIMED_OUT_KEY,
+                       VERIFY_TIMED_OUT_KEY, VERIFY_USER_DEFERRED_KEY,
+                       VERIFY_USER_FAILED_KEY, VERIFY_USER_NONE_KEY,
+                       VERIFY_USER_PASSED_KEY, VERIFY_DEFERRED_ICON,
+                       VERIFY_FAILED_COLOUR, VERIFY_FAILED_ICON,
+                       VERIFY_NOT_RUN_ICON, VERIFY_PASSED_COLOUR,
+                       VERIFY_PASSED_ICON,
                        canonical_language,
                        has_translation, messages_for, normalize_language,
                        sanitize_language)
@@ -191,7 +195,8 @@ from .written import (coerce_written, record_rules_written, record_written,
                       take_written)
 from .context import build_context, defang, neutralize
 from .notice import (build_notice_line, build_pretooluse_output,
-                     notice_name, rule_blocks_of)
+                     coloured_block, coloured_line, notice_name,
+                     rule_blocks_of)
 from .verifyrun import (CommandResult, DID_NOT_RUN_STATUSES, STATUS_ERROR,
                         STATUS_FAILED, STATUS_NOT_STARTED, STATUS_OUT_OF_TIME,
                         STATUS_PASSED, STATUS_TIMED_OUT, not_started,

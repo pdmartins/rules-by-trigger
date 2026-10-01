@@ -14,9 +14,10 @@ model and never what runs, because a WRITE is the trigger either way (spec
 Q14). `exclude:` still applies — it is the same matcher.
 
 What the model gets back is `decision: block` with the failures, and nothing at
-all when nothing that RAN failed: the user is told about a passing check — and
-about a command that never ran at all — through `systemMessage`, and Claude's
-context does not pay for good news (spec Q15).
+all when nothing that RAN failed: Claude's context does not pay for good news
+(spec Q15). The user is told everything — what passed, what failed, what never
+ran and what was deferred — in one coloured block on `systemMessage`, whether or
+not the turn is held open.
 
 Running a command is `verifyrun.py`'s business and writing the report is
 `verifyreport.py`'s; this module owns the selection, the order, the
@@ -35,12 +36,13 @@ import time
 
 from .constants import (VERIFY_COMMAND_TIMEOUT_SECONDS,
                         VERIFY_TOTAL_BUDGET_SECONDS, warn)
-from .discovery import find_scopes, git_root_of, project_root_of
+from .discovery import (find_scopes, git_root_of, global_scope,
+                        project_root_of)
 from .frontmatter import verify_of
 from .matching import collect_candidates
 from .state import close_state, open_state, save_state, state_file_for
 from .stats import record_verifications
-from .verifyreport import build_report, build_system_message, split_results
+from .verifyreport import build_report, build_system_message
 from .verifyrun import (DID_NOT_RUN_STATUSES, STATUS_OUT_OF_TIME, STATUS_PASSED,
                         STATUS_TIMED_OUT, not_started, run_command)
 from .written import take_written
@@ -308,7 +310,8 @@ def verify_turn():
     # one configured for the scopes of the first written path — a turn that
     # wrote in two projects reports in the language of the first.
     from .main import messages_for_scopes
-    messages = messages_for_scopes(find_scopes(os.path.dirname(written[0])))
+    scopes = find_scopes(os.path.dirname(written[0]))
+    messages = messages_for_scopes(scopes)
     results = run_jobs(jobs, budget=deadline - time.monotonic())
     # Recorded BEFORE the report is printed, unlike the injection's stats,
     # which are written after the payload is flushed. The reason is the same
@@ -329,25 +332,17 @@ def verify_turn():
                           if result.status not in DID_NOT_RUN_STATUSES
                           for scope_dir, name in job.rules])
     report = build_report(results, messages)
-    if report is None:
-        output = {"systemMessage":
-                  build_system_message(results, messages, deferred)}
-    else:
-        output = {"decision": "block", "reason": report}
-        # A blocked turn still owes the user the lines that are theirs alone:
-        # the one about a rule whose `verify:` was deferred, and one per
-        # command that never ran — the budget was spent, or the environment
-        # refused to launch it. Neither is shown to them any other way: stderr
-        # is not shown to them, and both are appendices in the model's report,
-        # not lines of their own (see `build_report`). A command that PASSED
-        # stays out of `systemMessage` here on purpose: on a blocked turn it is
-        # already one line inside the report the model reads, and repeating it
-        # to the user would be the same news twice. `systemMessage` travels
-        # beside the decision — the harness reads the common fields of every
-        # hook output.
-        _failures, did_not_run = split_results(results)
-        deferred_lines = build_system_message(did_not_run, messages, deferred)
-        if deferred_lines:
-            output["systemMessage"] = deferred_lines
+    output = {} if report is None else {"decision": "block", "reason": report}
+    # The user's block rides on every turn that has anything to report, held
+    # open or not, and lists everything, passed commands included: the model's
+    # reason carries the failures' output, and this is the user's own summary.
+    # `systemMessage` travels beside the decision — the harness reads the
+    # common fields of every hook output. The global scope is the same for every
+    # path, so the one found for the first written path tags a rule's line.
+    owner = global_scope(scopes)
+    user_block = build_system_message(results, messages, deferred,
+                                      owner[1] if owner else None)
+    if user_block:
+        output["systemMessage"] = user_block
     print(json.dumps(output))
     sys.stdout.flush()

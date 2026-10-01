@@ -649,7 +649,7 @@ three at once, and the ones that passed are listed at the end, `passed:
 already spent before (`not started`) and one the system refused to launch
 (`could not be started`) verified nothing, so neither holds the turn open and
 neither is counted in the usage stats — only a command that actually ran is
-evidence about your code. The user gets one line each. Claude is told too, but
+evidence about your code. The user's block lists each with the reason. Claude is told too, but
 only as a short "these never ran" section appended to a report it was being
 sent anyway: it should know the verification was incomplete, and there is
 nothing in it for it to fix.
@@ -659,10 +659,30 @@ the innermost, with each distinct command-and-directory pair run once. Two
 sibling projects written in the same turn therefore interleave rather than
 arriving grouped.
 
-When everything passes, Claude is told nothing at all. The **user** gets one
-line per command instead — `rules-by-trigger: verified — <command> (rule
-'<name>')` — because the check was theirs to ask for, and the model's context
-should not pay for good news.
+When everything passes, Claude is told nothing at all. The **user** always gets
+a coloured block, in the same layout as the injection notice above, because the
+check was theirs to ask for and the model's context should not pay for good
+news. It is green when everything that ran passed, red when anything failed
+(that is the turn Claude is held on) and blue when nothing ran. It lists one
+line per rule, whether or not the turn is held open: failed first, then
+passed, then the ones that never ran, then the rules whose `verify:` was
+written in this session and runs from the next one. It names the rule and not
+the command, and tags a global rule `[global]`:
+
+```
+ rules-by-trigger: verifications failed (1/2) — Claude got the report to fix it
+  ❌ CONV_x.md — exit code 1
+  ✅ [global] other-rule.md
+  ⏭️ rule-x.md — not started: this turn's verification time budget was already spent
+  🕓 new-rule.md — its verify: was written in this session; it runs from the next one
+```
+
+A rule is one line and counted once, however many commands it owns or
+directories it ran in: its status is the worst of them (failed, then not run,
+then passed), and a failing rule shows the first failure's reason. The counts
+are of rules whose commands ran, so they match the lines; a rule none of whose
+commands ran is in neither. When all pass the header reads
+`verifications passed (2/2)`; when nothing ran, `no verification ran`.
 
 **It runs again only after a new write.** Each verification takes the turn's
 list of written paths and clears it, so a turn that is held open and then

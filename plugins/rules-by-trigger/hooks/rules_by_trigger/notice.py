@@ -31,7 +31,8 @@ from .context import build_context
 # Layout of the block: it opens on its own line, lines are joined by a
 # newline, and every line is padded by one space on both sides inside its
 # colour. A rule's line is indented one space beyond that padding, so its
-# text sits two spaces in, one deeper than the header's.
+# text sits two spaces in, one deeper than the header's. The verification block
+# of the Stop hook (see `verifyreport.py`) uses this same layout.
 NOTICE_BLOCK_START = "\n"
 NOTICE_LINE_SEPARATOR = "\n"
 NOTICE_ITEM_INDENT = " "
@@ -69,12 +70,22 @@ def notice_item(block, messages):
             f"{notice_name(block, messages)}")
 
 
-def coloured_line(text):
-    """One line of the notice inside its own colour and reset, padded by one
+def coloured_line(text, colour=NOTICE_COLOUR):
+    """One line of a block inside its own colour and reset, padded by one
     space on each side. Colouring line by line keeps every SGR sequence
-    inside a single line, whatever the renderer does at a newline."""
-    return (f"{NOTICE_COLOUR}{NOTICE_LINE_PADDING}{text}"
+    inside a single line, whatever the renderer does at a newline. The colour
+    is the notice's unless the caller (the verification block) brings its own."""
+    return (f"{colour}{NOTICE_LINE_PADDING}{text}"
             f"{NOTICE_LINE_PADDING}{NOTICE_COLOUR_RESET}")
+
+
+def coloured_block(lines, colour=NOTICE_COLOUR):
+    """The block the user sees: each of `lines` (the header first) coloured on
+    its own, joined by a newline with none at the end, and preceded by a
+    newline so the block begins on its own line. The one place that layout is
+    written down, shared by the injection notice and the verification block."""
+    return NOTICE_BLOCK_START + NOTICE_LINE_SEPARATOR.join(
+        coloured_line(line, colour) for line in lines)
 
 
 def build_notice_line(blocks, messages, in_subagent):
@@ -96,10 +107,8 @@ def build_notice_line(blocks, messages, in_subagent):
     header = NOTICE_MARKER
     if in_subagent:
         header = f"{header} {messages[NOTICE_SUBAGENT_KEY]}"
-    lines = [coloured_line(header)]
-    for block in rules:
-        lines.append(coloured_line(notice_item(block, messages)))
-    return NOTICE_BLOCK_START + NOTICE_LINE_SEPARATOR.join(lines)
+    lines = [header] + [notice_item(block, messages) for block in rules]
+    return coloured_block(lines)
 
 
 def build_pretooluse_output(blocks, messages, in_subagent, show_injections):

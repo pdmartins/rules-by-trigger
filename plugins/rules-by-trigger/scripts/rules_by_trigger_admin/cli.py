@@ -12,8 +12,8 @@ from .doctor import cmd_doctor
 from .block import cmd_block
 from .migrate import cmd_migrate
 from .move import ANCHOR_CHOICES, cmd_move
-from .rules import (cmd_add, cmd_init, cmd_list, cmd_remove, cmd_show,
-                    cmd_update)
+from .lifecycle import cmd_remove
+from .rules import cmd_add, cmd_init, cmd_list, cmd_show, cmd_update
 from .setup import is_set_up, setup_notice
 from .status import cmd_status
 from .validate import cmd_validate
@@ -78,6 +78,17 @@ def main():
                              "sent again: '30k' (tokens), '25 calls', or 'never'. "
                              "Defaults to what the rule's type declares")
     parser.add_argument("--force", action="store_true", help="overwrite an existing rule")
+    parser.add_argument("--allow-duplicate", dest="allow_duplicate",
+                        action="store_true",
+                        help="add: create the rule even though a disabled rule "
+                             "of this scope declares the same glob or call "
+                             "(--force only overwrites a rule of the same name)")
+    parser.add_argument("--delete", action="store_true",
+                        help="remove: delete the rule file and its usage "
+                             "history instead of disabling the rule")
+    parser.add_argument("--enable", action="store_true",
+                        help="update: switch a disabled rule back on (with no "
+                             "body on stdin, nothing else changes)")
     parser.add_argument("--path", help="file/folder to resolve (which; optional "
                                        "on status)")
     parser.add_argument("--json", action="store_true",
@@ -135,6 +146,11 @@ def main():
 
     if args.command == "add" and not (args.glob or args.call):
         fail("'add' requires --glob or --call")
+    for flag, owner in (("allow_duplicate", "add"), ("delete", "remove"),
+                        ("enable", "update")):
+        if getattr(args, flag) and args.command != owner:
+            fail(f"'{args.command}' takes no --{flag.replace('_', '-')}; it "
+                 f"belongs to `{owner}`")
     if args.command in ("show", "update") and not args.rule:
         fail(f"'{args.command}' requires --rule")
     if args.command == "remove":

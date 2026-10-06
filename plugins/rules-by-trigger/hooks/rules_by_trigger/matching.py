@@ -6,6 +6,7 @@ import time
 from .constants import (FILE_PATH_KEYS, MATCH_BUDGET_SECONDS,
                         RULES_DIR_RELPATH, TOOL_KIND_READ, TOOL_KIND_WRITE,
                         WRITE_TOOL_NAMES, warn)
+from .enabled import enabled_entries
 from .frontmatter import calls_of, excludes_of, globs_of, tools_of
 from .globbing import glob_matches
 from .rules import has_legacy_map, scope_index
@@ -153,11 +154,12 @@ def collect_candidates(abs_path, real_abs, scopes, tool_name=None,
             legacy.append(label)
         targets = path_targets(abs_path, real_abs, base_dir)
         if index_cache is None:
-            entries = scope_index(scope_dir)
+            entries = enabled_entries(scope_index(scope_dir))
         else:
             entries = index_cache.get(scope_dir)
             if entries is None:
-                entries = index_cache[scope_dir] = scope_index(scope_dir)
+                entries = index_cache[scope_dir] = enabled_entries(
+                    scope_index(scope_dir))
         for name, fields in entries:
             if time.monotonic() > deadline:
                 budget_hit = True
@@ -211,7 +213,7 @@ def collect_call_candidates(tool_name, tool_input, scopes):
     for _base_dir, scope_dir, label in scopes:
         if has_legacy_map(scope_dir):
             legacy.append(label)
-        for name, fields in scope_index(scope_dir):
+        for name, fields in enabled_entries(scope_index(scope_dir)):
             trigger_text = call_trigger_of(fields, tool_name, tool_input)
             if trigger_text is not None:
                 candidates.append((scope_dir, label, name, trigger_text, fields))

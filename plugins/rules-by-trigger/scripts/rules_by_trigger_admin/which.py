@@ -68,6 +68,8 @@ def coverage_of(scope_dir, anchor, use_global, path, tool):
     if not os.path.isdir(scope_dir):
         return entries, shown
     for name, fields, _body in rules_in(scope_dir):
+        if not HOOK.is_enabled(fields):
+            continue  # the hook would not inject it, so it covers nothing
         applied = HOOK.applied_glob(fields, targets, kind)
         if applied is not None:
             entries.append((COVERAGE_MATCH, name,
@@ -118,6 +120,8 @@ def call_coverage_of(scope_dir, tool, field, value):
     tool_input = {field: value}
     entries = []
     for name, fields, _body in rules_in(scope_dir):
+        if not HOOK.is_enabled(fields):
+            continue
         trigger = HOOK.call_trigger_of(fields, tool, tool_input)
         if trigger is not None:
             entries.append((COVERAGE_MATCH, name, f"match: rule {name} — call: {trigger}"))

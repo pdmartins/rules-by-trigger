@@ -1,5 +1,6 @@
 """The commands that read and write rule files: init, list, show, add,
-update, remove. `which` lives in which.py.
+update. `which` lives in which.py, `remove` and the switching of a rule on and
+off in lifecycle.py.
 
 `add` is the one command that refuses to guess: a rule needs a type, and this is
 the only moment in the whole system when a human is present to choose it."""
@@ -7,7 +8,8 @@ the only moment in the whole system when a human is present to choose it."""
 import os
 import sys
 
-from .common import (CALL_KEY, EXCLUDE_KEY, GLOB_KEY, HOOK, INTERVAL_KEY,
+from .common import (CALL_KEY, ENABLED_KEY, EXCLUDE_KEY, GLOB_KEY, HOOK,
+                     INTERVAL_KEY,
                      LEGACY_INTERVAL_KEY, MAX_ECHOED_NAME_CHARS, RENDERED_KEYS,
                      TOOL_KEY, VERIFY_KEY, atomic_write, check_call,
                      check_glob, check_line_value, existing_is_not_a_rule,
@@ -18,6 +20,9 @@ from .config import (TYPE_SEPARATOR, check_remember_again_after, config_for,
                      resolve_type)
 from .describe import (calls_for, describe_filters, describe_verify,
                        filters_label, triggers_label)
+from .lifecycle import (enable_rule, refuse_disabled_duplicate,
+                        refuse_enabled_change, refuse_submitted_enabled,
+                        restore_lines)
 from .validate import filter_problems, validate_scope
 
 
@@ -216,6 +221,7 @@ def cmd_add(args):
     body, submitted = split_submitted(sys.stdin.read())
     if not body:
         fail("empty rule content — send the markdown via stdin")
+    refuse_submitted_enabled(submitted)
     globs = [g.strip() for g in args.glob if g.strip()] or HOOK.globs_of(submitted)
     calls = calls_for(args, submitted)
     if not globs and not calls:
@@ -237,6 +243,8 @@ def cmd_add(args):
     if os.path.exists(path) and not args.force:
         fail(f"{name} already exists in this scope; use --force to overwrite, "
              f"`update --rule {name}` to replace its body, or pass another --rule")
+    if not args.allow_duplicate:
+        refuse_disabled_duplicate(scope_dir, name, globs, calls)
     os.makedirs(scope_dir, exist_ok=True)
     # Precedence: the flag, then what the body already declared, then the
     # default this type carries in the config. The type default is WRITTEN into
@@ -270,10 +278,16 @@ def cmd_add(args):
 
 def cmd_update(args):
     scope_dir, anchor = scope_for(args)
-    body, submitted = split_submitted(sys.stdin.read())
+    # `--enable` is the one update that may come with no body at all, and then
+    # nobody is typing one: a terminal is never read, so it cannot hang.
+    body, submitted = split_submitted(
+        "" if args.enable and sys.stdin.isatty() else sys.stdin.read())
+    path = existing_rule_path(scope_dir, args.rule)
+    if not body and args.enable:
+        enable_rule(args, scope_dir, anchor, args.rule, path)
+        return
     if not body:
         fail("empty rule content — send the markdown via stdin")
-    path = existing_rule_path(scope_dir, args.rule)
     result = HOOK.read_rule_file(scope_dir, args.rule)
     if result is None:
         fail(f"cannot read {args.rule}")
@@ -282,6 +296,9 @@ def cmd_update(args):
         fail(f"{args.rule} is not a rule (no frontmatter); `update` replaces a "
              f"rule's body. Use `add` to create a rule, choosing a name that does "
              f"not collide with an existing plain markdown file")
+    refuse_enabled_change(submitted, fields, args.enable)
+    # Agreed with the current state, so the rule's own line is the one kept.
+    submitted.pop(ENABLED_KEY, None)
     # Precedence: explicit CLI flag, then what was submitted on stdin, then
     # what the rule already had — so a show -> edit -> update round trip keeps
     # everything the user did not deliberately change.
@@ -297,6 +314,8 @@ def cmd_update(args):
     excludes, tool = filters_for(args, submitted or fields)
     verify = verify_for(args, submitted or fields)
     merged = {**fields, **submitted}
+    if args.enable:
+        merged.pop(ENABLED_KEY, None)
     atomic_write(path, render_rule(globs, body, interval,
                                    preserved_fields(merged, owned_last=True),
                                    excludes=excludes, tool=tool, verify=verify,
@@ -307,28 +326,9 @@ def cmd_update(args):
         print(filters)
     for line in describe_verify(verify):
         print(line)
+    if args.enable:
+        restore_lines(args, anchor, merged, globs)
     config = config_for(args)
     warn_if_long(args.rule, body, config)
     validate_scope(scope_dir, anchor, quiet=True, config=config,
                    is_global=args.use_global)
-
-
-def cmd_remove(args):
-    scope_dir, _ = scope_for(args)
-    name = args.rule
-    if not name:
-        matches = [n for n, fields, _ in rules_in(scope_dir)
-                   if args.glob in HOOK.globs_of(fields)]
-        if not matches:
-            fail(f"no rule declares the glob {args.glob!r}")
-        if len(matches) > 1:
-            fail(f"{len(matches)} rules declare that glob ({', '.join(matches)}); "
-                 f"pick one with --rule")
-        name = matches[0]
-    path = rule_path(scope_dir, name)
-    if os.path.islink(path):
-        fail(f"{name} is a symlink; refusing to delete through it")
-    if not os.path.isfile(path):
-        fail(f"no such rule in this scope: {name}")
-    os.unlink(path)
-    print(f"ok: removed {name}")

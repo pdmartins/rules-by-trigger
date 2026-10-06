@@ -19,16 +19,19 @@ from .common import HOOK, atomic_write, fail, rules_in, scope_for
 SETTINGS_RELPATH = os.path.join(".claude", "settings.json")
 
 
-def blocking_rules(scope_dir):
+def blocking_rules(scope_dir, enabled=True, skip_name=None):
     """[(name, globs, excludes)] for every rule in the scope that declares
-    `block: true`, in the order `rules_in` already sorts them.
+    `block: true` and is switched on (`enabled=False`: switched off), in the
+    order `rules_in` already sorts them. `skip_name` leaves one rule out — the
+    one a command is about to disable or delete.
 
     The excludes ride along because a native deny entry cannot express one:
     `--list` has to say so, rather than let a synced entry silently deny more
     than the rule it came from."""
     return [(name, HOOK.globs_of(fields), HOOK.excludes_of(fields))
             for name, fields, _body in rules_in(scope_dir)
-            if HOOK.block_of(fields)]
+            if HOOK.block_of(fields) and HOOK.is_enabled(fields) == enabled
+            and name != skip_name]
 
 
 def deny_entry_for(glob):
@@ -99,6 +102,41 @@ def existing_deny_entries(settings_path):
     return deny if isinstance(deny, list) else []
 
 
+def apply_deny_lines(anchor, add=(), remove=()):
+    """([entries added], [entries removed]) after bringing the project's
+    `permissions.deny` in line: every entry of `add` present, every entry of
+    `remove` gone, anything else untouched.
+
+    Idempotent on purpose — a line already there, or already gone (taken out by
+    hand), is not an error — and it writes only when something changes, so the
+    second run of a command that was interrupted finishes the work and a run
+    with nothing to do leaves the file alone, even when it does not exist yet.
+    A failed write leaves the file as it was and exits through `fail`, naming
+    the file: the commands that call this have already written the rule."""
+    settings_path = os.path.join(anchor, SETTINGS_RELPATH)
+    if not (add or os.path.isfile(settings_path)):
+        return [], []
+    data = read_settings_for_sync(settings_path)
+    permissions = data.get("permissions", {})
+    if not isinstance(permissions, dict):
+        fail(f"{settings_path}: 'permissions' is not an object; fix it by hand")
+    deny = permissions.get("deny", [])
+    if not isinstance(deny, list):
+        fail(f"{settings_path}: 'permissions.deny' is not an array; fix it by hand")
+    removed = [entry for entry in remove if entry in deny]
+    added = [entry for entry in add if entry not in deny]
+    if not (added or removed):
+        return [], []
+    kept = [entry for entry in deny if entry not in removed]
+    data.setdefault("permissions", permissions)["deny"] = kept + added
+    try:
+        atomic_write(settings_path, json.dumps(data, indent=2) + "\n")
+    except OSError as exc:
+        fail(f"cannot write {settings_path}: {exc}; run the same command again "
+             f"once it is writable")
+    return added, removed
+
+
 def cmd_block_list(scope_dir, anchor, is_global):
     rules = blocking_rules(scope_dir)
     if not rules:
@@ -137,29 +175,36 @@ def cmd_block_sync(scope_dir, anchor, is_global):
              "block: true rule is already honoured by the hook directly, so "
              "there is nothing to sync. Pass --root <project-root> for the "
              "project whose blocking rules need a native deny of their own")
-    rules = blocking_rules(scope_dir)
-    entries = deny_entries(rules)
-    if not entries:
+    wanted = deny_entries(blocking_rules(scope_dir))
+    # What only a disabled rule still asks for: the line is stale. This is how a
+    # hand edit of `enabled:` gets corrected, since `remove` is the command that
+    # takes the lines out in the first place.
+    stale = [entry for entry in deny_entries(blocking_rules(scope_dir, enabled=False))
+             if entry not in wanted]
+    if not wanted and not stale:
         print("(no blocking rules to sync)")
         return
+    added, removed = apply_deny_lines(anchor, wanted, stale)
     settings_path = os.path.join(anchor, SETTINGS_RELPATH)
-    data = read_settings_for_sync(settings_path)
-    permissions = data.setdefault("permissions", {})
-    if not isinstance(permissions, dict):
-        fail(f"{settings_path}: 'permissions' is not an object; fix it by hand")
-    deny = permissions.setdefault("deny", [])
-    if not isinstance(deny, list):
-        fail(f"{settings_path}: 'permissions.deny' is not an array; fix it by hand")
-    added = [entry for entry in entries if entry not in deny]
-    deny.extend(added)
-    if not added:
-        print(f"ok: {settings_path} already has every deny entry these rules need")
+    if not added and not removed:
+        if wanted:
+            print(f"ok: {settings_path} already has every deny entry these "
+                  f"rules need")
+        else:
+            print(f"ok: nothing to change in {settings_path}: it holds no line "
+                  f"of a disabled rule")
         return
-    atomic_write(settings_path, json.dumps(data, indent=2) + "\n")
-    plural = "y" if len(added) == 1 else "ies"
-    print(f"ok: {len(added)} new deny entr{plural} written to {settings_path}")
-    for entry in added:
-        print(f"  {entry}")
+    if added:
+        plural = "y" if len(added) == 1 else "ies"
+        print(f"ok: {len(added)} new deny entr{plural} written to {settings_path}")
+        for entry in added:
+            print(f"  {entry}")
+    if removed:
+        plural = "y" if len(removed) == 1 else "ies"
+        print(f"ok: {len(removed)} deny entr{plural} of disabled rules removed "
+              f"from {settings_path}")
+        for entry in removed:
+            print(f"  {entry}")
 
 
 def cmd_block(args):

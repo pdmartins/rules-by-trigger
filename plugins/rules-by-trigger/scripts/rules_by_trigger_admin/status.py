@@ -92,6 +92,7 @@ def rule_entry(name, fields, body, config, usage):
         "remember_again_after": raw_interval,
         "remember_again_after_parsed": list(interval) if interval else None,
         "block": HOOK.block_of(fields),
+        "enabled": HOOK.is_enabled(fields),
         "chars": len(body),
         "usage": public_usage(usage),
         "_fields": fields,

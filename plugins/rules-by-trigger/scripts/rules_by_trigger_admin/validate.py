@@ -7,7 +7,7 @@ import os
 import re
 import sys
 
-from .common import (BLOCK_KEY, EXCLUDE_KEY, HOOK, INTERVAL_KEY,
+from .common import (BLOCK_KEY, ENABLED_KEY, EXCLUDE_KEY, HOOK, INTERVAL_KEY,
                      LEGACY_BLOCK_KEY, LEGACY_INTERVAL_KEY, LEGACY_MAP_NAME,
                      OWN_KEYS, TOOL_KEY, VERIFY_KEY, call_problem,
                      other_markdown_in, rules_in, scope_for)
@@ -291,7 +291,13 @@ def scope_findings(scope_dir, anchor=None, config=None, is_global=False):
                 notes.append(f"{name}: {', '.join(irrelevant)} only applies to "
                              f"a path trigger ({HOOK.GLOB_KEYS[0]}:); it has no "
                              f"effect on this call-only rule")
-        for glob in globs:
+        if not HOOK.enabled_is_valid(fields):
+            problems.append(f"{name}: {ENABLED_KEY}: "
+                            f"{fields.get(ENABLED_KEY)!r} is not a boolean — "
+                            f"write {' or '.join(HOOK.ENABLED_WORDS)}; the hook "
+                            f"treats the rule as active")
+        # A disabled rule injects nothing, so it shares nothing with the others.
+        for glob in globs if HOOK.is_enabled(fields) else ():
             by_glob.setdefault(glob, []).append(name)
         if not body:
             problems.append(f"{name}: empty body")
@@ -311,7 +317,8 @@ def scope_findings(scope_dir, anchor=None, config=None, is_global=False):
         notes.extend(split_candidates(name, globs, body, anchor))
         notes.extend(reinforcement_notes(name, body, fields, config))
         notes.extend(filter_notes(name, fields))
-        notes.extend(block_notes(name, fields, is_global, globs))
+        if HOOK.is_enabled(fields):  # a disabled block asks for no native deny
+            notes.extend(block_notes(name, fields, is_global, globs))
         notes.extend(verify_notes(name, fields, is_global))
     convention = name_convention(config)
     off_convention = []

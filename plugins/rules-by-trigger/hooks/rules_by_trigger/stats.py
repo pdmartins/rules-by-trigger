@@ -305,8 +305,10 @@ def record_verifications(session_id, repo, outcomes):
 
 
 def drop_rule_usage(scope_dir, name):
-    """A rule was deleted: forget its usage."""
-    update_stats(lambda stats: drop_rule(stats, rule_key(scope_dir, name)))
+    """A rule was deleted: forget its usage. Answers what `update_stats` does:
+    None when the file could not be read or written, so a caller that must not
+    carry on after a failed drop (the CLI's `remove --delete`) can tell."""
+    return update_stats(lambda stats: drop_rule(stats, rule_key(scope_dir, name)))
 
 
 def move_rule_usage(old_scope_dir, old_name, new_scope_dir, new_name):

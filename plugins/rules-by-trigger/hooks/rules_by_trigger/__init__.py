@@ -63,6 +63,7 @@ Layout — one concern per module, none over 400 lines:
     config.py       config.json: the rule taxonomy and the repeat defaults
     reinject.py     the re-injection budget: its config key and its clamp
     frontmatter.py  the rule header: parsing, globs, remember_again_after
+    enabled.py      whether a rule is switched on (`enabled: false` mutes it)
     globbing.py     non-backtracking glob matching
     discovery.py    which scopes apply, and which are safe to read
     rules.py        rule names, reading a rule file, indexing a scope
@@ -176,6 +177,8 @@ from .frontmatter import (BLOCK_KEY, BLOCK_TRUE_VALUES, CALL_KEYS,
                           parse_remember_again_after, parse_size,
                           remember_again_after_of, tool_values_of, tools_of,
                           unquote, verify_of)
+from .enabled import (ENABLED_FALSE, ENABLED_KEY, ENABLED_WORDS,
+                      enabled_is_valid, enabled_word, is_enabled)
 from .configfile import config_path_for, read_config_file
 from .config import (find_rule_type, language, load_config,
                      load_layer, max_rule_chars,

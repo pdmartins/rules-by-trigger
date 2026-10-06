@@ -10,6 +10,7 @@ import os
 import stat
 import sys
 import tempfile
+from typing import NoReturn
 
 
 # How much of a name or value a refusal message echoes back.
@@ -47,7 +48,7 @@ class NotARegularFile(OSError):
     bounded read of repository data must not be pointed at."""
 
 
-def fail(message):
+def fail(message) -> NoReturn:
     raise AdminError(message)
 
 
@@ -106,10 +107,12 @@ CALL_KEY = HOOK.CALL_KEYS[0]
 BLOCK_KEY = HOOK.BLOCK_KEY
 LEGACY_BLOCK_KEY = HOOK.LEGACY_BLOCK_KEY
 VERIFY_KEY = HOOK.VERIFY_KEY
+ENABLED_KEY = HOOK.ENABLED_KEY
 RENDERED_KEYS = ({INTERVAL_KEY, LEGACY_INTERVAL_KEY, VERIFY_KEY}
                  | set(HOOK.GLOB_KEYS) | set(HOOK.EXCLUDE_KEYS)
                  | set(HOOK.TOOL_KEYS) | set(HOOK.CALL_KEYS))
-OWN_KEYS = RENDERED_KEYS | {DESCRIPTION_KEY, BLOCK_KEY, LEGACY_BLOCK_KEY}
+OWN_KEYS = RENDERED_KEYS | {DESCRIPTION_KEY, BLOCK_KEY, LEGACY_BLOCK_KEY,
+                            ENABLED_KEY}
 
 
 def scope_for(args):
@@ -137,19 +140,23 @@ def scope_for(args):
     return scope_dir, anchor
 
 
-def read_regular_file(path, limit):
+def read_regular_file(path, limit, newline=None):
     """The first `limit` characters of `path`, read without following a symlink
     and without trusting what is at the other end.
 
     O_NOFOLLOW plus the S_ISREG check is what stops a planted link or a fifo
     from turning a bounded read of repository data into a read of the user's own
     files, or into a hang. Every refusal leaves as an OSError, so each caller
-    decides whether it is fatal."""
+    decides whether it is fatal.
+
+    `newline=""` hands the line endings back exactly as stored, for the caller
+    that writes the text back."""
     fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             raise NotARegularFile(f"{path} is not a regular file")
-        with os.fdopen(fd, encoding="utf-8", errors="replace") as handle:
+        with os.fdopen(fd, encoding="utf-8", errors="replace",
+                       newline=newline) as handle:
             fd = None  # fdopen owns it now
             return handle.read(limit)
     finally:
@@ -157,20 +164,23 @@ def read_regular_file(path, limit):
             os.close(fd)
 
 
-def atomic_write(path, text):
+def atomic_write(path, text, newline=None):
     """Replace `path` atomically, without ever writing through a symlink.
 
     The temp file is created by mkstemp (random name, O_EXCL, mode 0600) in the
     destination directory: a predictable `path + '.tmp'` is a symlink target an
     attacker can plant in advance, which turns any write into an arbitrary file
-    overwrite. `os.replace` then swaps the inode rather than following a link."""
+    overwrite. `os.replace` then swaps the inode rather than following a link.
+
+    `newline=""` writes `text` as it is, so a file read with the same setting
+    keeps its line endings."""
     if os.path.islink(path):
         fail(f"{path} is a symlink; refusing to write through it")
     directory = os.path.dirname(path)
     os.makedirs(directory, exist_ok=True)
     fd, tmp_path = tempfile.mkstemp(dir=directory, prefix=".rbt-", suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as handle:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
@@ -300,7 +310,7 @@ def preserved_fields(fields, owned_last=False):
         return {key: value for key, value in fields.items()
                 if key not in RENDERED_KEYS}
     extra = {key: value for key, value in fields.items() if key not in OWN_KEYS}
-    for key in (DESCRIPTION_KEY, BLOCK_KEY, LEGACY_BLOCK_KEY):
+    for key in (DESCRIPTION_KEY, BLOCK_KEY, LEGACY_BLOCK_KEY, ENABLED_KEY):
         if key in fields:
             extra[key] = fields[key]
     return extra

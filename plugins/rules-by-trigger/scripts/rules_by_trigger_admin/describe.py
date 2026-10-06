@@ -15,6 +15,8 @@ CALL_NONE = "none"
 # What `list`/`status` show in place of a rule's triggers when it declares
 # neither a `glob:` nor a `call:` — the one thing that makes a rule dead.
 NO_TRIGGER_LABEL = "(NEITHER GLOB NOR CALL — never injected)"
+# What `list`/`status` say first about a rule that is switched off.
+DISABLED_LABEL = "DISABLED — not injected, not verified, not blocking"
 
 
 def calls_for(args, source):
@@ -91,7 +93,8 @@ def filters_label(fields):
     filter — which is what it is; `validate` is where the typo is named. A
     verification is listed in the same slot: it is not a filter, but it is the
     other thing a rule does that its glob alone does not say."""
-    parts = filter_parts(HOOK.excludes_of(fields), HOOK.tools_of(fields))
+    parts = [] if HOOK.is_enabled(fields) else [DISABLED_LABEL]
+    parts.extend(filter_parts(HOOK.excludes_of(fields), HOOK.tools_of(fields)))
     parts.extend(verify_label(HOOK.verify_of(fields)))
     return f"  [{'; '.join(parts)}]" if parts else ""
 

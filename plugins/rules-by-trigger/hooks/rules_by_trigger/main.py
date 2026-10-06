@@ -1,6 +1,7 @@
-"""The four entry points Claude Code calls: the PreToolUse injection (`main`),
-the SessionStart notice, the state reset on compact/clear, and the Stop
-verification — which lives in `verify.py` and is only dispatched here.
+"""The five entry points Claude Code calls: the PreToolUse injection (`main`),
+the SessionStart notice, the state reset on compact/clear, the Stop
+verification and the `/rules-by-trigger:status` expansion — which live in
+`verify.py` and `statuscommand.py` and are only dispatched here.
 
 `main()` has two branches past reading `tool_name`: the path branch, for the
 five file tools, matches a touched file against every rule's `glob:`; the
@@ -22,6 +23,7 @@ from .injection import config_for_scopes, deliver
 from .matching import (collect_call_candidates, collect_candidates,
                        extract_file_path, is_inside_rules_dir)
 from .rules import read_rule_file
+from .statuscommand import status_command
 from .state import close_state, empty_state, open_state, save_state, state_file_for
 from .verify import verify_turn
 from .written import record_rules_written
@@ -248,6 +250,8 @@ def cli(argv=None):
             session_notice()
         elif "--verify" in argv:
             verify_turn()
+        elif "--status-command" in argv:
+            status_command()
         else:
             main()
     except Exception as exc:  # never break the tool call because of this hook

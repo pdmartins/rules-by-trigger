@@ -39,12 +39,15 @@ def start_folder(args):
 
 
 def repo_of(args, start):
-    """The repository, identified as the hook identifies it: the git root of
-    the start folder, or the folder itself outside git."""
-    repo = HOOK.repo_root_of(start) if args.root else HOOK.repo_identity()
+    """(repository, whether git named it), identified as the hook identifies
+    it: the git root of the start folder, or the folder itself outside git."""
+    if args.root:
+        repo, in_git = HOOK.repo_root_and_git(start)
+    else:
+        repo, in_git = HOOK.repo_identity_and_git()
     if repo is None:
         fail(ERROR_NO_REPO)
-    return repo
+    return repo, in_git
 
 
 def absolute_path(path, start):
@@ -63,10 +66,10 @@ def json_rule(row):
 
 def cmd_status(args):
     start = start_folder(args)
-    repo = repo_of(args, start)
+    repo, in_git = repo_of(args, start)
     config = config_for(SimpleNamespace(use_global=args.use_global, root=repo))
     stats = HOOK.load_stats()
-    scopes = scopes_of(repo, args.use_global)
+    scopes = scopes_of(repo, args.use_global, in_git)
     rows = sorted(rows_of(scopes, config, stats, repo), key=sort_key)
     covering = None
     if args.path:

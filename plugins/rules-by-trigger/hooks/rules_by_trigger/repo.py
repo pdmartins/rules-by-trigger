@@ -45,12 +45,18 @@ def git_toplevel(folder):
     return None
 
 
+def repo_root_and_git(folder):
+    """(repository root, whether git named one) for `folder`: its git root, or
+    the folder itself when it has none or git cannot say."""
+    real = os.path.realpath(folder)
+    top = git_toplevel(real)
+    return (os.path.realpath(top), True) if top else (real, False)
+
+
 def repo_root_of(folder):
     """The repository `folder` belongs to: its git root, or the folder itself
     when it has none or git cannot say."""
-    real = os.path.realpath(folder)
-    top = git_toplevel(real)
-    return os.path.realpath(top) if top else real
+    return repo_root_and_git(folder)[0]
 
 
 def current_folder():
@@ -63,22 +69,29 @@ def current_folder():
         return None
 
 
-def repo_identity():
-    """The repository of this session, or None when even the current folder
-    cannot be read.
+def repo_identity_and_git():
+    """(repository of this session, whether git named it), the repository being
+    None when even the current folder cannot be read.
 
     The git root of `CLAUDE_PROJECT_DIR`, or of the current folder when the
     variable is absent (a CLI run by hand); that folder itself outside git.
     When the root cannot be computed — git unable to run, a folder it cannot
-    enter — the current folder stands in."""
+    enter — the current folder stands in. Git runs once, so a failure is said
+    once."""
     project_dir = os.environ.get(PROJECT_DIR_ENV)
     folder = os.path.realpath(project_dir) if project_dir else current_folder()
     if folder is None:
-        return None
+        return None, False
     top = git_toplevel(folder)
     if top is None:
-        return current_folder()
-    return os.path.realpath(top) if top else folder
+        return current_folder(), False
+    return (os.path.realpath(top), True) if top else (folder, False)
+
+
+def repo_identity():
+    """The repository of this session, or None when even the current folder
+    cannot be read; see `repo_identity_and_git`."""
+    return repo_identity_and_git()[0]
 
 
 def repo_of_state(state):

@@ -24,8 +24,10 @@ def line_for(glob):
     return f"Edit({glob})"
 
 
-class DisabledSandbox(statsutil.StatsSandbox):
-    """Helpers to plant rules and read back the settings file."""
+class DisabledSandbox(statsutil.RepoSandbox):
+    """Helpers to plant rules and read back the settings file. The project is a
+    git repository of its own, so `status` does not depend on what holds the
+    temporary folder."""
 
     def write_settings(self, lines):
         util.write_file(os.path.join(self.proj, SETTINGS_RELPATH),

@@ -1,8 +1,9 @@
 """Which rules `status` lists, and which of them cover a path.
 
-The scopes are the global one, the project at the repository root and every
-project nested below it. A project folder above the root belongs to no single
-repository and is never looked at. Everything here only reads."""
+The scopes are the global one, the project at the repository root and, inside
+git, every project nested below it. Outside git there is no search: only the
+project of the folder itself is listed. A project folder above the root belongs
+to no single repository and is never looked at. Everything here only reads."""
 
 import os
 from collections import namedtuple
@@ -34,32 +35,44 @@ def global_scope_of():
     return Scope(SCOPE_GLOBAL, ROOT_SUBDIR, home, scope_dir) if scope_dir else None
 
 
+def project_scope_at(folder, repo_root, excluded_real):
+    """The usable project scope of `folder`, or None when it has none or its
+    real path is in `excluded_real` (the global one, when the repository sits
+    at home, is not listed twice)."""
+    scope_dir = HOOK.usable_scope(folder)
+    if not scope_dir or os.path.realpath(scope_dir) in excluded_real:
+        return None
+    relative = os.path.relpath(folder, repo_root)
+    subdir = ROOT_SUBDIR if relative == os.curdir else relative.replace(os.sep, "/")
+    return Scope(SCOPE_PROJECT, subdir, folder, scope_dir)
+
+
 def nested_scopes(repo_root, excluded_real):
-    """Every usable project scope at `repo_root` or below it, the root first and
-    the rest in name order. Symlinked folders are not followed, `.git` is not
-    entered, and a scope whose real path is in `excluded_real` (the global
-    one, when the repository sits at home) is not listed twice."""
+    """Every usable project scope at `repo_root` or below it, the root first
+    and the rest in name order. Symlinked folders are not followed and the
+    folders of SKIPPED_FOLDERS are not entered."""
     scopes = []
     for folder, subfolders, _files in os.walk(repo_root):
         subfolders[:] = sorted(name for name in subfolders
                                if name not in SKIPPED_FOLDERS)
-        scope_dir = HOOK.usable_scope(folder)
-        if not scope_dir or os.path.realpath(scope_dir) in excluded_real:
-            continue
-        relative = os.path.relpath(folder, repo_root)
-        subdir = ROOT_SUBDIR if relative == os.curdir else relative.replace(os.sep, "/")
-        scopes.append(Scope(SCOPE_PROJECT, subdir, folder, scope_dir))
+        scope = project_scope_at(folder, repo_root, excluded_real)
+        if scope:
+            scopes.append(scope)
     return scopes
 
 
-def scopes_of(repo_root, only_global):
-    """The scopes whose rules the table lists."""
+def scopes_of(repo_root, only_global, in_git):
+    """The scopes whose rules the table lists; `in_git` says whether git named
+    `repo_root`, which is what allows searching below it."""
     owner = global_scope_of()
     scopes = [owner] if owner else []
     if only_global:
         return scopes
     excluded = {os.path.realpath(owner.scope_dir)} if owner else set()
-    return scopes + nested_scopes(repo_root, excluded)
+    if in_git:
+        return scopes + nested_scopes(repo_root, excluded)
+    own = project_scope_at(repo_root, repo_root, excluded)
+    return scopes + ([own] if own else [])
 
 
 def rows_of(scopes, config, stats, repo):

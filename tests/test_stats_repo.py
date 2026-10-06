@@ -74,9 +74,12 @@ class PerRepoCountingTest(statsutil.StatsSandbox):
         repos = self.stats()["rules"][self.key(self.global_scope, "GLOB_all.md")]["repos"]
         self.assertEqual(list(repos), [os.path.realpath(self.proj)])
 
-    def test_without_the_project_dir_the_current_folder_stands_in(self):
+    def test_without_the_project_dir_the_current_folder_is_the_repo_when_git_names_none(self):
         folder = os.path.join(self.proj, "src", "web")
-        self.fire("src/web/a.py", project_dir="", cwd=folder)
+        # The ceiling keeps git from finding a repository the temporary folder
+        # may sit in; it is the folder itself that must come out as the repo.
+        self.fire("src/web/a.py", project_dir="", cwd=folder,
+                  env={"GIT_CEILING_DIRECTORIES": self.tmp.name})
         repos = self.stats()["rules"][self.key(self.global_scope, "GLOB_all.md")]["repos"]
         self.assertEqual(list(repos), [os.path.realpath(folder)])
 

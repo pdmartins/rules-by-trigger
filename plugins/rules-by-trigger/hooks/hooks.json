@@ -12,6 +12,18 @@
         ]
       }
     ],
+    "UserPromptExpansion": [
+      {
+        "matcher": "rules-by-trigger:status",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/rules-by-trigger-hook\" --status-command",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

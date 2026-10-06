@@ -204,8 +204,8 @@ from .state import (cleanup_stale_state, close_state,
 from .contexttokens import context_size, detect_context_regression
 from .due import agent_key_prefix, rule_key_prefix, trim_injected_rules
 from .repo import (PROJECT_DIR_ENV, counts_for, git_toplevel, is_above,
-                   repo_identity, repo_of_session, repo_of_state,
-                   repo_root_of, rule_base)
+                   repo_identity, repo_identity_and_git, repo_of_session,
+                   repo_of_state, repo_root_and_git, repo_root_of, rule_base)
 from .statsconstants import LEGACY_STATS_FILE_NAME
 from .statsformat import (coerce_entry, coerce_rule, drop_rule, empty_entry,
                           empty_rule, empty_stats, enforce_caps,
@@ -229,5 +229,6 @@ from .verifyreport import build_report, build_system_message, status_line
 from .verify import (VerifyJob, collect_jobs, job_cwd,
                      run_jobs, scope_order, take_turn_writes, verify_turn)
 from .injection import build_blocks, config_for_scopes, deliver, over_budget
+from .statuscommand import expand_status_command, status_command
 from .main import (blocking_rule, cli, inject_for_call, main,
                    messages_for_scopes, reset_session, session_notice)

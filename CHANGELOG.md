@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
+## 0.12.0 — 2026-10-06
+
 ### Changed
 
 - **The plugin lives in `plugin/`.** It was `plugins/rules-by-trigger/`. The

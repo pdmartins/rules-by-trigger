@@ -10,7 +10,7 @@
       "name": "rules-by-trigger",
       "displayName": "Rules by Trigger",
       "description": "Path-scoped rules for Claude Code: markdown rules auto-injected into context the moment Claude touches a file matching a glob, or loads a named skill. A scalable replacement for nested CLAUDE.md files.",
-      "version": "0.11.0",
+      "version": "0.12.0",
       "source": "./plugin",
       "author": {
         "name": "Pedro Martins",

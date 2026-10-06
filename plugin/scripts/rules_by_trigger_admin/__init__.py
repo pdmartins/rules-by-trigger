@@ -8,7 +8,10 @@ Used by the `rules-by-trigger:manage` skill.
 Layout — one concern per module, none over 400 lines:
 
     common.py    the scope, the rule-file vocabulary, safe read and write
-    config.py    config.json: which layers apply, the rule taxonomy, `config`
+    config.py    config.json: which layers apply, the rule taxonomy, its report
+    configcmd.py `config`: show, write a key, setup, hardening
+    configwrite.py `config <key> <value>`: one key of one layer, validated
+    configargs.py the checks of `config`'s operands and setup flags
     validate.py  everything that can be said about a scope without changing it
     rules.py     init, list, show, add, update, remove
     which.py     which — what covers a path, by the hook's own matcher

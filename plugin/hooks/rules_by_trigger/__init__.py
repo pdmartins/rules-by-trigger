@@ -180,7 +180,8 @@ from .frontmatter import (BLOCK_KEY, BLOCK_TRUE_VALUES, CALL_KEYS,
 from .enabled import (ENABLED_FALSE, ENABLED_KEY, ENABLED_WORDS,
                       enabled_is_valid, enabled_word, is_enabled)
 from .configfile import config_path_for, read_config_file
-from .config import (find_rule_type, language, load_config,
+from .config import (REMEMBER_UNITS, RULE_SIZE_KEYS, find_rule_type,
+                     language, load_config,
                      load_layer, max_rule_chars,
                      remember_again_after_default,
                      remember_again_after_for_type, rule_types, sanitize_config,

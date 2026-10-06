@@ -112,12 +112,22 @@ def drop_rule(stats, key):
 
 def move_rule(stats, old_key, new_key):
     """A rule was renamed or moved to another scope: its total and every
-    repository's entry follow it. Whatever sat under the new key is replaced —
-    a rule that did not exist yet has nothing worth keeping."""
+    repository's entry follow it, and the old key is gone either way.
+
+    When the new key already holds history, the larger `total` stays and the
+    other is dropped; on a tie the new key's stays. That is the case of a run
+    finished by a second one: both files exist in between and both count, so
+    the history that kept counting is the larger one (see `carry_history` in
+    the admin). A history left under the new key by a rule file deleted by hand
+    is cleared by the command before it writes, so it cannot win here. When
+    only one side holds history it stays or moves, as it always did."""
     if old_key == new_key:
         return
     rule = stats["rules"].pop(old_key, None)
-    if rule is not None:
+    if rule is None:
+        return
+    kept = stats["rules"].get(new_key)
+    if kept is None or rule["total"] > kept["total"]:
         stats["rules"][new_key] = rule
 
 

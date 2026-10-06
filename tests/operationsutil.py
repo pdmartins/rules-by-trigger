@@ -40,6 +40,27 @@ class OperationsSandbox(DisabledSandbox):
             "repos": {os.path.realpath(self.proj): entry, SECOND_REPO: other}}
         self.plant(stats)
 
+    def add_firing(self, scope, name):
+        """The rule fired once more in this repository: one more in its total
+        and in this repository's entry, the way the hook records it. Planted
+        rather than run for the moves, where the project copy of a name
+        supersedes the global one and the hook would never fire both."""
+        stats = self.stats()
+        rule = stats["rules"].setdefault(self.key(scope, name), HOOK.empty_rule())
+        entry = rule["repos"].setdefault(os.path.realpath(self.proj),
+                                         HOOK.empty_entry())
+        rule["total"] += 1
+        rule["last"] = entry["last"] = 6
+        entry["injections"] += 1
+        self.plant(stats)
+
+    def forget_history(self, scope, name):
+        """The rule has nothing recorded under its name: a rule file that was
+        deleted by hand, or one that never fired."""
+        stats = self.stats()
+        del stats["rules"][self.key(scope, name)]
+        self.plant(stats)
+
     def row(self, name, kind=KIND_PROJECT):
         for rule in self.status_json()["rules"]:
             if rule["name"] == name and rule["scope"] == kind:
@@ -73,6 +94,8 @@ class OperationsSandbox(DisabledSandbox):
 
     def break_stats(self):
         """The usage file cannot be updated any more: its lock is a folder."""
+        if os.path.isfile(self.lock_path()):
+            os.unlink(self.lock_path())  # left by an earlier run of the test
         os.makedirs(self.lock_path())
         self.addCleanup(self.repair_stats)
 

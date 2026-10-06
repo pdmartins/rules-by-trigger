@@ -11,8 +11,8 @@ mean "in any project" or "in this one" — and that one is asked for, with
 import os
 from types import SimpleNamespace
 
-from .carry import (DEST_OVERWRITE, DEST_SAME, carry_history,
-                    clear_overwritten, plan_destination)
+from .carry import (DEST_NEW, DEST_OVERWRITE, DEST_SAME, carry_history,
+                    clear_overwritten, discard_history, plan_destination)
 from .common import (HOOK, MAX_ECHOED_NAME_CHARS, atomic_write,
                      existing_rule_path, fail, read_regular_file, rule_path,
                      scope_for, warn)
@@ -172,6 +172,8 @@ def cmd_move(args):
     state = plan_destination(target, text, name, dest_label, args.force)
     if state == DEST_OVERWRITE:
         clear_overwritten(dest.use_global, dest_dir, dest_anchor, name)
+    elif state == DEST_NEW:
+        discard_history(dest_dir, name)
     os.makedirs(dest_dir, exist_ok=True)
     if state != DEST_SAME:
         atomic_write(target, text)

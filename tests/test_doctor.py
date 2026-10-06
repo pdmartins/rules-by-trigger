@@ -43,9 +43,10 @@ class DoctorTest(util.SandboxTestCase):
         self.assertIn("WARN  hardening: 4 of 4 deny entries missing", proc.stdout)
         self.assertIn("ok    no pre-plugin manual installation", proc.stdout)
         self.assertIn("WARN  setup: not done", proc.stdout)
-        self.assertIn("does not exist — fix: ask the user the language", proc.stdout)
+        self.assertIn("does not exist — fix: ask the user to type "
+                      "/rules-by-trigger:config", proc.stdout)
         self.assertIn("1 finding(s) need a human.", proc.stdout)
-        self.assertIn("finding(s) need `doctor --harden`, which edits "
+        self.assertIn("finding(s) need `config --harden`, which edits "
                       "~/.claude/settings.json — ask the user first.", proc.stdout)
         self.assertFalse(os.path.exists(util.state_path(self.home, "rbt-doctor-probe")))
 
@@ -99,12 +100,14 @@ class DoctorTest(util.SandboxTestCase):
                          ["Read(**/.env)", "Grep(**/.claude/rules-by-trigger/**)"],
                          "--fix no longer touches the hardening")
         self.assertIn("WARN  hardening: obsolete deny entries", proc.stdout)
-        proc = self.doctor("--harden")
+        self.assertNotEqual(self.doctor("--harden").returncode, 0)
+        proc = self.admin("config", "--harden")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         data = self.settings()
         self.assertEqual(data["model"], "opus")
         self.assertEqual(data["permissions"]["deny"],
                          ["Read(**/.env)"] + HARDENING_ENTRIES)
+        proc = self.doctor()
         self.assertIn("ok    hardening: all 4 deny entries present", proc.stdout)
         self.assertIn("nothing to fix.", proc.stdout)
 

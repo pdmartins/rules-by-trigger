@@ -1,10 +1,10 @@
 """`doctor`: every check the setup used to walk a model through, run by one
 command, each finding naming its fix. `--fix` applies the deterministic ones
-(migration); `--harden` is the one fix that is never automatic, because it
+(migration); the hardening is the one fix that is never automatic, because it
 edits the user's own `~/.claude/settings.json` and has to be asked for by
-name; `--setup` records the machine's own consent — see `setup.py` — and
-`--uninstall` undoes what the plugin left behind while deliberately keeping
-the user's rules.
+name, through `config --harden`; the machine's own consent is `config --setup`
+— see `setup.py` — and `--uninstall` undoes what the plugin left behind while
+deliberately keeping the user's rules.
 
 Setup and troubleshooting are the same checks at different moments, so they
 are one command. The text that only matters when a problem exists is printed
@@ -22,10 +22,9 @@ from .common import (HOOK, HOOK_PATH, INTERVAL_KEY, LEGACY_INTERVAL_KEY,
                      LEVEL_WARN, finding, rules_in)
 from .config import TYPE_SEPARATOR, config_for, split_type_prefix
 from .block import read_settings_for_sync
-from .hardening import (apply_hardening, hardening_state, remove_hardening,
-                        user_settings_path)
+from .hardening import hardening_state, remove_hardening, user_settings_path
 from .migrate import cmd_migrate
-from .setup import check_setup, run_setup
+from .setup import check_setup
 from .environment import (HOOK_LAUNCHER_RELPATH, plugin_version,
                           scope_dir_and_anchor, scope_targets)
 from .validate import scope_findings
@@ -44,10 +43,10 @@ PLUGIN_UNINSTALL_COMMAND = "/plugin uninstall rules-by-trigger@pdmartins"
 TITLE = "rules-by-trigger {version} — doctor"
 LINE_FINDING = "{level:<5} {text}"
 FIX_AUTO = " — fix: {hint} [--fix applies it]"
-FIX_HARDEN = " — fix: {hint} [--harden applies it; ask the user first]"
+FIX_HARDEN = " — fix: {hint} [applies it; ask the user first]"
 FIX_MANUAL = " — fix: {hint} [manual]"
 SUMMARY_FIXABLE = "{count} finding(s) can be applied with `doctor --fix`."
-SUMMARY_HARDEN = ("{count} finding(s) need `doctor --harden`, which edits "
+SUMMARY_HARDEN = ("{count} finding(s) need `config --harden`, which edits "
                   "~/.claude/settings.json — ask the user first.")
 SUMMARY_MANUAL = "{count} finding(s) need a human."
 SUMMARY_CLEAN = "\nnothing to fix."
@@ -184,12 +183,12 @@ def check_hardening():
             LEVEL_WARN, f"hardening: {len(state['missing'])} of "
             f"{len(state['missing']) + len(state['present'])} deny entries missing "
             f"from {state['settings']} — the file tools can still read and edit "
-            f"rule files directly", "doctor --harden", hardens=True))
+            f"rule files directly", "config --harden", hardens=True))
     if state["obsolete"]:
         findings.append(finding(
             LEVEL_WARN, f"hardening: obsolete deny entries (never matched, warn "
             f"at startup): {', '.join(state['obsolete'])}",
-            "doctor --harden", hardens=True))
+            "config --harden", hardens=True))
     if not findings:
         findings.append(finding(LEVEL_OK, f"hardening: all {len(state['present'])} "
                                 f"deny entries present in {state['settings']}"))
@@ -282,7 +281,7 @@ def apply_fixes(findings):
     """Run each distinct fix once — several findings may point at the same
     migration, and it is idempotent anyway. The hardening is never among these
     actions any more: it edits the user's own settings, so it only runs when
-    asked for by name, through `--harden` (see `cmd_doctor`)."""
+    asked for by name, through `config --harden`."""
     done = set()
     for entry in findings:
         action = entry["action"]
@@ -318,19 +317,9 @@ def cmd_doctor(args):
         return
     root = os.path.expanduser("~") if args.use_global else os.path.abspath(args.root)
     print(TITLE.format(version=plugin_version()))
-    if args.setup:
-        run_setup(args)
     findings = run_checks(args, root)
     print_findings(findings)
     changed = args.fix and apply_fixes(findings)
-    if args.harden and not args.setup:
-        print(APPLYING.format(hint="doctor --harden"))
-        added, removed = apply_hardening()
-        for item in added:
-            print(f"  + {item}")
-        for item in removed:
-            print(f"  - {item}")
-        changed = True
     if changed:
         print(RECHECK)
         findings = run_checks(args, root)

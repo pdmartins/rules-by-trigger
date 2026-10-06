@@ -97,6 +97,28 @@ class OperationsTest(unittest.TestCase):
         self.assertEqual(stats["rules"][self.NEW]["total"], 10)
         self.assertEqual(set(stats["rules"][self.NEW]["repos"]), {"/repo/a", "/repo/b"})
 
+    def test_move_onto_a_key_with_history_keeps_the_larger_total(self):
+        for destination_total, winner in ((3, "source"), (10, "destination"),
+                                          (30, "destination")):
+            with self.subTest(destination_total=destination_total):
+                stats = self.stats()
+                stats["rules"][self.NEW] = {"total": destination_total,
+                                            "last": 1, "repos": {}}
+                source = stats["rules"][self.OLD]
+                destination = stats["rules"][self.NEW]
+                HOOK.move_rule(stats, self.OLD, self.NEW)
+                self.assertNotIn(self.OLD, stats["rules"])
+                self.assertIs(stats["rules"][self.NEW],
+                              source if winner == "source" else destination)
+
+    def test_move_onto_a_key_with_only_history_there_leaves_it(self):
+        stats = self.stats()
+        del stats["rules"][self.OLD]
+        stats["rules"][self.NEW] = {"total": 2, "last": 1, "repos": {}}
+        before = {key: dict(rule) for key, rule in stats["rules"].items()}
+        HOOK.move_rule(stats, self.OLD, self.NEW)
+        self.assertEqual(stats["rules"], before)
+
     def test_move_of_a_rule_with_no_history_changes_nothing(self):
         stats = self.stats()
         HOOK.move_rule(stats, "/nothing::here.md", self.NEW)

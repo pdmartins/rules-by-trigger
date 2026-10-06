@@ -74,11 +74,13 @@ def carry_history(old_scope_dir, old_name, new_scope_dir, new_name, only_repo=No
     only that repository's, whose count becomes the total.
 
     A run finished by a second one never counts twice: once the old key is gone
-    both steps do nothing. One window remains, accepted on purpose: if this step
-    succeeds, the source file is not removed, and the rule fires before the
-    re-run, the re-run replaces the destination's history with the source's
-    small new count. Merging the two instead would double-count the more common
-    window, a re-run after a failure with no firing in between."""
+    both steps do nothing. Between a failed run and its re-run both files exist
+    and both count, so when both keys hold history the one with the larger total
+    is the one that kept counting all along — in both failure windows: the
+    history moved but the source file was not removed (the destination holds the
+    moved history, the source starts a new count), and the history step failed
+    (the source still holds its history, the destination starts a new count).
+    With no firing in between, the old and the new rule give the same number."""
     old_key = HOOK.rule_key(old_scope_dir, old_name)
     new_key = HOOK.rule_key(new_scope_dir, new_name)
 

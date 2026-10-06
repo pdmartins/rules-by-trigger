@@ -9,10 +9,10 @@ asked and answered. The project scope carries no such state of its own:
 asking a project for consent about the machine it happens to be checked out on
 would make no sense.
 
-`doctor --setup` is the only writer, and it writes the file LAST (see
-`run_setup`): a decline is a legitimate answer that still ends the notice, and
-either answer commits by writing the file — nothing here half-applies a
-choice."""
+`config --setup` is the only writer of the setup, and it writes the file LAST
+(see `run_setup`): a decline is a legitimate answer that still ends the
+notice, and either answer commits by writing the file — nothing here
+half-applies a choice. `config --harden` applies the hardening on its own."""
 
 import json
 import os
@@ -22,6 +22,7 @@ from .hardening import apply_hardening
 
 # ---- user-visible text, in display order -----------------------------------
 SETUP_APPLYING_HARDEN = "\napplying: the recommended hardening"
+HARDEN_APPLYING = "applying: the recommended hardening (config --harden)"
 SETUP_LANGUAGE_FALLBACK = ("note: {language!r} ships no translation of the "
                            "text the hook injects, which falls back to "
                            "{fallback} — translations shipped: {shipped}")
@@ -29,11 +30,10 @@ SETUP_ACCEPTED = ("setup: wrote {path} (language={language}, hardening="
                   "{harden})")
 SETUP_DECLINED = "setup: declined — {path} written, settings untouched"
 CHECK_NOT_DONE = "setup: not done — {path} does not exist"
-CHECK_NOT_DONE_HINT = ("ask the user the language (shipped translations: "
-                       "{shipped}) and whether to apply the recommended "
-                       "hardening, then `doctor --setup --language <code> "
-                       "--harden|--no-harden`; if they decline the setup, "
-                       "`doctor --setup --decline`")
+CHECK_NOT_DONE_HINT = ("ask the user to type /rules-by-trigger:config, which "
+                       "asks the language (shipped translations: {shipped}) "
+                       "and whether to apply the recommended hardening; do "
+                       "not invoke that skill yourself")
 CHECK_DONE = "setup: done ({path})"
 # -----------------------------------------------------------------------------
 
@@ -75,7 +75,7 @@ def write_user_config(language):
     if data is None:
         if existed:
             fail(f"{path} exists but could not be read as JSON; fix it by "
-                 f"hand, then re-run `doctor --setup`")
+                 f"hand, then re-run `config --setup`")
         data = {}
     if language is not None:
         data[HOOK.LANGUAGE_KEY] = language
@@ -83,8 +83,25 @@ def write_user_config(language):
     return path
 
 
+def print_hardening():
+    """Apply the recommended hardening and say what changed in the user's
+    settings, one line per entry."""
+    added, removed = apply_hardening()
+    for item in added:
+        print(f"  + {item}")
+    for item in removed:
+        print(f"  - {item}")
+
+
+def run_harden():
+    """`config --harden` on its own: the hardening without the rest of the
+    setup. It edits the user's own settings, so it only runs when asked for."""
+    print(HARDEN_APPLYING)
+    print_hardening()
+
+
 def run_setup(args):
-    """`doctor --setup`'s own effect, run before the normal report.
+    """`config --setup`'s own effect.
 
     Order matters: the config file is written LAST, so a failure above it
     (an existing file that cannot be parsed, a hardening write that cannot be
@@ -99,11 +116,7 @@ def run_setup(args):
             shipped=", ".join(HOOK.SHIPPED_LANGUAGES)))
     if args.harden:
         print(SETUP_APPLYING_HARDEN)
-        added, removed = apply_hardening()
-        for item in added:
-            print(f"  + {item}")
-        for item in removed:
-            print(f"  - {item}")
+        print_hardening()
     path = write_user_config(args.language)
     print(SETUP_ACCEPTED.format(path=path, language=args.language,
                                 harden="applied" if args.harden else "skipped"))
@@ -111,7 +124,7 @@ def run_setup(args):
 
 def check_setup():
     """The report's own line about consent — WARN, never ERROR: a machine
-    that never ran `--setup` still gets everything injected, so this must not
+    that never ran `config --setup` still gets everything injected, so this must not
     flip `doctor`'s exit code the way a broken installation does."""
     path = user_config_path()
     if is_set_up():

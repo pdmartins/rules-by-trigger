@@ -1,5 +1,5 @@
 """The configuration the CLI runs under: which layers apply, the rule taxonomy
-they declare, and the `config` command that prints the result.
+they declare, and the report `config` prints of the result.
 
 The taxonomy lives in `config.json` — the plugin's default, the user's own, and
 the project's — so it is data, not code, and the manage skill reads it from here
@@ -10,6 +10,8 @@ import re
 
 from .common import (HOOK, INTERVAL_KEY, RULES_DIR_RELPATH, check_line_value,
                      fail)
+
+REINJECT_BUDGET_KEY = "reinject_budget"
 
 
 # A rule file name is `TYPE_what-it-asserts.md`. The type is chosen by what a
@@ -39,6 +41,12 @@ LANGUAGE_TRANSLATED = ("the text the hook injects around them is translated "
                        "to it as well")
 LANGUAGE_FALLBACK = ("the text the hook injects around them falls back to "
                      "{fallback} — translations shipped: {shipped}")
+
+# What `config` says about the two keys that are a single value each.
+REINJECT_BUDGET_LABEL = ("how many times one rule may be sent again in a "
+                         "session, however far the context moves")
+SHOW_INJECTIONS_LABEL = ("whether you see a notice naming the rules a tool "
+                         "call injected; only the global layer can turn it off")
 
 
 def config_layers(args):
@@ -144,7 +152,7 @@ def check_remember_again_after(value):
              f"('30k', '30000'), calls ('25 calls'), or 'never'")
 
 
-def cmd_config(args):
+def show_config(args):
     """Print the configuration in force for this scope, and where each part of
     it came from. This is how the manage skill learns the rule types: they are
     configuration, so nothing may carry a second copy of them."""
@@ -186,6 +194,15 @@ def cmd_config(args):
         print("  " + LANGUAGE_FALLBACK.format(
             fallback=HOOK.DEFAULT_LANGUAGE,
             shipped=", ".join(HOOK.SHIPPED_LANGUAGES)))
+
+    print(f"\n{REINJECT_BUDGET_KEY}:")
+    print(f"  {HOOK.reinject_budget(config)}  — {REINJECT_BUDGET_LABEL} "
+          f"(from {sources.get(REINJECT_BUDGET_KEY, 'built in')})")
+
+    print(f"\n{HOOK.SHOW_INJECTIONS_KEY}:")
+    print(f"  {str(HOOK.show_injections(config)).lower()}  — "
+          f"{SHOW_INJECTIONS_LABEL} "
+          f"(from {sources.get(HOOK.SHOW_INJECTIONS_KEY, 'built in')})")
 
     print("\nlayers, nearest last:")
     print(f"  {plugin_config}")

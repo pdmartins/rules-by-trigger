@@ -6,7 +6,9 @@ import argparse
 import sys
 
 from .common import HOOK, AdminError, fail, warn
-from .config import cmd_config
+from .configargs import (check_config_operands, check_setup_flags,
+                         uses_setup_flags)
+from .configcmd import cmd_config
 from .digest import cmd_digest
 from .doctor import cmd_doctor
 from .block import cmd_block
@@ -36,14 +38,15 @@ OPERANDS = {"rename": ("rule", "new_name"), "split": ("rule",)}
 OPERANDS_USAGE = {"rename": "<rule> <new-name>", "split": "<rule>"}
 EPILOG = SPLIT_HELP
 
-# Commands that never carry the setup notice. `doctor` is where the notice is
-# answered (`--setup`), so a reminder on top of it would be noise. `show`
+# Commands that never carry the setup notice. `config` and `doctor` are where
+# the notice is answered, so a reminder on top of them would be noise. `show`
 # prints a rule document that the documented `show -> edit -> update` round
 # trip feeds back into `update`: a line above its `---` would end up inside
 # the rule's body. `status --json` is exempt too, through `args.json`.
-SETUP_NOTICE_EXEMPT_COMMANDS = ("doctor", "show")
+SETUP_NOTICE_EXEMPT_COMMANDS = ("config", "doctor", "show")
 
-# Commands that run without `--root`/`--global`.
+# Commands that run without `--root`/`--global`; a setup flag does too, since it
+# acts on this machine and not on a scope.
 COMMANDS_WITHOUT_SCOPE = ("status",)
 
 # `block` answered to `enforce` until 0.7.0, alongside the frontmatter key of
@@ -60,7 +63,8 @@ def main():
         epilog=EPILOG, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=list(COMMANDS) + list(COMMAND_ALIASES))
     parser.add_argument("operands", nargs="*", metavar="argument",
-                        help="rename: <rule> <new-name>; split: <rule>")
+                        help="rename: <rule> <new-name>; split: <rule>; "
+                             "config: <key> <value>")
     scope = parser.add_mutually_exclusive_group()
     scope.add_argument("--root", help="project root (the folder containing "
                                       ".claude/); on status, the folder it "
@@ -131,23 +135,23 @@ def main():
                         help="doctor: remove the deny entries and cached state "
                              "the plugin left behind; rule directories are kept")
     parser.add_argument("--setup", action="store_true",
-                        help="doctor: record this machine's setup consent in "
-                             "~/.claude/rules-by-trigger/config.json, then run "
-                             "the normal report; needs --language and "
-                             "--harden/--no-harden, or --decline")
+                        help="config: record this machine's setup consent in "
+                             "~/.claude/rules-by-trigger/config.json; needs "
+                             "--language and --harden/--no-harden, or "
+                             "--decline")
     parser.add_argument("--language",
-                        help="doctor --setup: language for rule bodies and the "
+                        help="config --setup: language for rule bodies and the "
                              "text the hook injects around them")
     harden_group = parser.add_mutually_exclusive_group()
     harden_group.add_argument("--harden", dest="harden", action="store_true",
                               default=None,
-                              help="doctor: apply the recommended permission "
+                              help="config: apply the recommended permission "
                                    "hardening to ~/.claude/settings.json "
                                    "(edits the user's own file — ask first)")
     harden_group.add_argument("--no-harden", dest="harden", action="store_false",
-                              help="doctor --setup: skip the hardening")
+                              help="config --setup: skip the hardening")
     parser.add_argument("--decline", action="store_true",
-                        help="doctor --setup: record the setup decision "
+                        help="config --setup: record the setup decision "
                              "without hardening or a language")
     parser.add_argument("--list", action="store_true",
                         help="block: show block: true rules and their native "
@@ -158,8 +162,12 @@ def main():
     args = parser.parse_intermixed_args()
 
     # `status` alone may leave the scope out: it then starts from
-    # CLAUDE_PROJECT_DIR or the current folder.
-    if args.command not in COMMANDS_WITHOUT_SCOPE and not (args.root or args.use_global):
+    # CLAUDE_PROJECT_DIR or the current folder. So does a setup flag: the setup
+    # is about this machine, not about a scope, and on any command but
+    # `config` it is refused below by name rather than as a missing scope.
+    scope_free = (args.command in COMMANDS_WITHOUT_SCOPE
+                  or uses_setup_flags(args))
+    if not scope_free and not (args.root or args.use_global):
         parser.error("one of the arguments --root --global is required")
 
     if args.command in OPERANDS:
@@ -170,9 +178,12 @@ def main():
                  f"--rule/--glob/--type/--remember-again-after")
         for attribute, value in zip(names, args.operands):
             setattr(args, attribute, value)
+    elif args.command == "config":
+        check_config_operands(args)
     elif args.operands:
         fail(f"'{args.command}' takes no positional arguments "
-             f"({' '.join(args.operands)!r}); they belong to `rename` and `split`")
+             f"({' '.join(args.operands)!r}); they belong to `rename`, `split` "
+             f"and `config`")
 
     if args.command in COMMAND_ALIASES:
         current = COMMAND_ALIASES[args.command]
@@ -246,36 +257,7 @@ def main():
             fail("'block' requires --list or --sync")
         if args.list and args.sync:
             fail("'block' takes --list OR --sync, not both")
-    # `--setup` and its own sub-flags belong to `doctor` alone, the same way
-    # `--fix`/`--uninstall` do above.
-    if (args.setup or args.language is not None or args.decline) and args.command != "doctor":
-        fail(f"'{args.command}' takes no --setup/--language/--decline; they "
-             f"belong to `doctor`")
-    if args.harden is not None and args.command != "doctor":
-        fail(f"'{args.command}' takes no --harden/--no-harden; they belong to `doctor`")
-    if args.decline and not args.setup:
-        fail("'--decline' only means something with `doctor --setup`")
-    if args.language is not None and not args.setup:
-        fail("'--language' only means something with `doctor --setup`")
-    if args.harden is False and not args.setup:
-        fail("'--no-harden' only means something with `doctor --setup`")
-    if args.harden is not None and args.uninstall:
-        fail("'doctor' takes --harden/--no-harden OR --uninstall, not both")
-    if args.language is not None:
-        sanitized = HOOK.sanitize_language(args.language, "--language")
-        if sanitized is None:
-            fail(f"--language {args.language[:40]!r} is not usable — see stderr")
-        args.language = sanitized
-    if args.setup:
-        if args.fix or args.uninstall:
-            fail("'doctor --setup' takes no --fix/--uninstall")
-        if args.decline:
-            if args.language is not None or args.harden is not None:
-                fail("'doctor --setup --decline' takes no --language/--harden/"
-                     "--no-harden")
-        elif args.language is None or args.harden is None:
-            fail("'doctor --setup' requires --language and one of "
-                 "--harden/--no-harden (or --decline to skip both)")
+    check_setup_flags(args)
 
     if (args.command not in SETUP_NOTICE_EXEMPT_COMMANDS and not args.json
             and not is_set_up()):

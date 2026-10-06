@@ -24,6 +24,8 @@ Subcommands:
                               carry a rule to the other scope, rewriting its globs
   validate                    check every rule: frontmatter, globs, size, safety
   config                      the effective config.json: rule types and defaults
+  config <key> <value>        write one key of the --global or --root config.json
+  config --setup ...|--harden this machine's setup and the recommended hardening
   migrate                     bring a scope up to the current format
   block --list                block: true rules and their native deny equivalents
   block --sync                write those equivalents into a project's settings.json

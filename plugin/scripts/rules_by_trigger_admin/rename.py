@@ -8,8 +8,8 @@ order `carry.py` describes, the old file last."""
 
 import os
 
-from .carry import (DEST_OVERWRITE, DEST_SAME, carry_history,
-                    clear_overwritten, plan_destination)
+from .carry import (DEST_NEW, DEST_OVERWRITE, DEST_SAME, carry_history,
+                    clear_overwritten, discard_history, plan_destination)
 from .common import (HOOK, atomic_write, existing_rule_path, fail,
                      read_regular_file, rule_path, scope_for)
 from .config import config_for, resolve_type
@@ -41,6 +41,8 @@ def cmd_rename(args):
     state = plan_destination(target, text, new_name, "this", args.force, newline="")
     if state == DEST_OVERWRITE:
         clear_overwritten(args.use_global, scope_dir, anchor, new_name)
+    elif state == DEST_NEW:
+        discard_history(scope_dir, new_name)
     if state != DEST_SAME:
         atomic_write(target, text, newline="")
     sync_lines(args.use_global, scope_dir, anchor,

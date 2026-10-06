@@ -108,8 +108,14 @@ class RenameTest(OperationsSandbox):
             self.assertNotEqual(proc.returncode, 0, flag)
             self.assertIn("takes <rule>", proc.stderr)
 
+    def leave_the_new_file(self):
+        """What an earlier run that got as far as writing the new file left:
+        the next run goes on from there and reaches the history step."""
+        util.write_file(os.path.join(self.scope, NEW), self.read_rule(OLD))
+
     @NOT_ROOT
     def test_a_failed_history_update_exits_non_zero_and_a_rerun_finishes(self):
+        self.leave_the_new_file()
         self.break_stats()
         proc = self.rename(OLD, NEW)
         self.assertNotEqual(proc.returncode, 0)
@@ -121,6 +127,39 @@ class RenameTest(OperationsSandbox):
         self.assertFalse(self.rule_exists(OLD))
         self.assertEqual(self.counts(NEW), (THIS_REPO_COUNT, TOTAL_COUNT))
 
+    @NOT_ROOT
+    def test_an_unusable_usage_file_stops_a_new_name_before_anything_is_written(self):
+        """The leftover under a new name is discarded before the file is
+        written, so a history that cannot be read or changed stops the command
+        there: nothing is written, and the re-run finds a clean start."""
+        self.break_stats()
+        before = self.snapshot()
+        proc = self.rename(OLD, NEW)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertFalse(self.rule_exists(NEW))
+        self.assertTrue(self.rule_exists(OLD))
+        self.assertEqual(self.snapshot(), before)
+
+    def test_a_usage_file_that_is_a_symlink_hides_no_leftover(self):
+        """The usage file cannot be read through a link, so whether a leftover
+        sits under the new name is unknowable: the command stops before the
+        write instead of taking silence for 'nothing there'."""
+        self.history(self.scope, NEW, this_repo=50, other_repo=0, total=50)
+        kept = self.stats_bytes()
+        replacement = self.stats_file() + ".real"
+        os.replace(self.stats_file(), replacement)
+        os.symlink(replacement, self.stats_file())
+        before = self.snapshot()
+        proc = self.rename(OLD, NEW)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertFalse(self.rule_exists(NEW))
+        self.assertEqual(self.snapshot(), before)
+        os.unlink(self.stats_file())
+        util.write_file(self.stats_file(), kept.decode("utf-8"))
+        proc = self.rename(OLD, NEW)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.counts(NEW), (THIS_REPO_COUNT, TOTAL_COUNT))
+
     def test_a_rerun_after_the_history_moved_counts_nothing_twice(self):
         """The run that died after the history step and before the old file
         went: the old file is still there, the history is not under its key."""
@@ -129,6 +168,56 @@ class RenameTest(OperationsSandbox):
         proc = self.rename(OLD, NEW)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertFalse(self.rule_exists(OLD))
+        self.assertEqual(self.counts(NEW), (THIS_REPO_COUNT, TOTAL_COUNT))
+
+    def test_a_rerun_after_the_history_moved_and_the_rule_fired_keeps_the_moved_history(self):
+        """(a) The history step succeeded, removing the old file failed, and
+        the rule fired once before the re-run: both files count, so both keys
+        are one firing up. The new name ends with what moved, plus that one."""
+        self.rename(OLD, NEW)
+        util.write_file(os.path.join(self.scope, OLD), self.read_rule(NEW))
+        self.add_firing(self.scope, OLD)
+        self.add_firing(self.scope, NEW)
+        proc = self.rename(OLD, NEW)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertFalse(self.rule_exists(OLD))
+        self.assertEqual(self.counts(NEW), (THIS_REPO_COUNT + 1, TOTAL_COUNT + 1))
+        self.assertNotIn(self.key(self.scope, OLD), self.stats_keys())
+
+    @NOT_ROOT
+    def test_a_rerun_after_a_failed_history_step_and_a_firing_keeps_the_old_history(self):
+        """(b) The history step failed and the rule fired once before the
+        re-run: the old name kept counting, the new one started from zero."""
+        self.leave_the_new_file()
+        self.break_stats()
+        self.assertNotEqual(self.rename(OLD, NEW).returncode, 0)
+        self.repair_stats()
+        self.add_firing(self.scope, OLD)
+        self.add_firing(self.scope, NEW)
+        proc = self.rename(OLD, NEW)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertFalse(self.rule_exists(OLD))
+        self.assertEqual(self.counts(NEW), (THIS_REPO_COUNT + 1, TOTAL_COUNT + 1))
+
+    def test_history_left_under_a_new_name_is_gone_when_the_renamed_rule_has_none(self):
+        """(d) A rule file deleted by hand leaves its history under its name;
+        it must not outlive the creation of a new rule with that name."""
+        self.forget_history(self.scope, OLD)
+        self.history(self.scope, NEW)
+        self.assertFalse(self.rule_exists(NEW))
+        proc = self.rename(OLD, NEW)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.counts(NEW), (0, 0))
+        self.assertNotIn(self.key(self.scope, NEW), self.stats_keys())
+
+    def test_history_left_under_a_new_name_gives_way_to_the_renamed_rules(self):
+        """(e) The same, with a renamed rule that has history: the new name ends
+        with exactly that history, the larger leftover included."""
+        self.history(self.scope, NEW, this_repo=50, other_repo=0, total=50)
+        before = self.stats()["rules"][self.key(self.scope, OLD)]
+        proc = self.rename(OLD, NEW)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.stats()["rules"][self.key(self.scope, NEW)], before)
         self.assertEqual(self.counts(NEW), (THIS_REPO_COUNT, TOTAL_COUNT))
 
     def test_a_new_name_with_other_content_is_still_a_collision_on_a_rerun(self):

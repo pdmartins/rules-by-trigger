@@ -3,8 +3,9 @@
 One identity for the three places that need it — the hook recording a firing,
 the migration of the old usage file, and `status` — so a number counted by one
 is found by the others. The repository is the git root of the folder Claude
-Code was opened in (`CLAUDE_PROJECT_DIR`), or that folder itself outside git;
-every path goes through `realpath`, as the usage file's rule key already does.
+Code was opened in (`CLAUDE_PROJECT_DIR`) or, without it, of the current
+folder; outside git, that folder itself. Every path goes through `realpath`,
+as the usage file's rule key already does.
 Each worktree has its own root, so each counts separately.
 
 Computed once per session and cached in the session state: the hook runs on
@@ -66,16 +67,18 @@ def repo_identity():
     """The repository of this session, or None when even the current folder
     cannot be read.
 
-    The git root of `CLAUDE_PROJECT_DIR`; that folder itself outside git. When
-    the root cannot be computed — no `CLAUDE_PROJECT_DIR`, git unable to run,
-    a folder it cannot enter — the current folder stands in."""
+    The git root of `CLAUDE_PROJECT_DIR`, or of the current folder when the
+    variable is absent (a CLI run by hand); that folder itself outside git.
+    When the root cannot be computed — git unable to run, a folder it cannot
+    enter — the current folder stands in."""
     project_dir = os.environ.get(PROJECT_DIR_ENV)
-    if not project_dir:
-        return current_folder()
-    top = git_toplevel(os.path.realpath(project_dir))
+    folder = os.path.realpath(project_dir) if project_dir else current_folder()
+    if folder is None:
+        return None
+    top = git_toplevel(folder)
     if top is None:
         return current_folder()
-    return os.path.realpath(top) if top else os.path.realpath(project_dir)
+    return os.path.realpath(top) if top else folder
 
 
 def repo_of_state(state):

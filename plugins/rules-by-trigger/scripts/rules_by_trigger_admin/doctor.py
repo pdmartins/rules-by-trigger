@@ -26,8 +26,8 @@ from .hardening import (apply_hardening, hardening_state, remove_hardening,
                         user_settings_path)
 from .migrate import cmd_migrate
 from .setup import check_setup, run_setup
-from .status import (HOOK_LAUNCHER_RELPATH, plugin_version,
-                     scope_dir_and_anchor, scope_targets)
+from .environment import (HOOK_LAUNCHER_RELPATH, plugin_version,
+                          scope_dir_and_anchor, scope_targets)
 from .validate import scope_findings
 
 PROBE_SESSION_ID = "rbt-doctor-probe"

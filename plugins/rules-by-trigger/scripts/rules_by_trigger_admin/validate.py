@@ -4,14 +4,14 @@ Notes are advice — a long rule, a shared glob, a rule that looks like it wants
 to be split. Errors mean something will not work at all."""
 
 import os
-import re
 import sys
 
 from .common import (BLOCK_KEY, ENABLED_KEY, EXCLUDE_KEY, HOOK, INTERVAL_KEY,
                      LEGACY_BLOCK_KEY, LEGACY_INTERVAL_KEY, LEGACY_MAP_NAME,
                      OWN_KEYS, TOOL_KEY, VERIFY_KEY, call_problem,
                      other_markdown_in, rules_in, scope_for)
-from .config import TYPE_SEPARATOR, config_for, name_convention, split_type_prefix
+from .config import TYPE_SEPARATOR, config_for, name_convention
+from .reinforcement import reinforcement_notes
 from .splitting import split_candidates
 
 # The keys that only ever narrow a PATH trigger — declared on a rule with
@@ -20,35 +20,9 @@ from .splitting import split_candidates
 IRRELEVANT_ON_CALL_ONLY_KEYS = (set(HOOK.EXCLUDE_KEYS) | set(HOOK.TOOL_KEYS)
                                 | {BLOCK_KEY, LEGACY_BLOCK_KEY, VERIFY_KEY})
 
-# Case-insensitive: a rule stating a prohibition needs the opposite
-# reinforcement default from one stating a requirement or convention — only
-# prohibition-shaped constraints are known to decay under long context
-# (arXiv:2604.20911). Advice for a human reading `validate`, never a judgement
-# injected by the hook, which never looks at a rule's own text this way.
-PROHIBITION_PATTERN = re.compile(
-    r"never|do not|don't|must not|forbidden|nunca|não (deve|pode)|proibido",
-    re.IGNORECASE)
-# A repeat this tight, on a rule with no prohibition language at all, is more
-# often a copy-pasted interval than a deliberate choice.
-AGGRESSIVE_INTERVAL_TOKENS = 10_000
-AGGRESSIVE_INTERVAL_CALLS = 10
 # The glob that matches every path: as an `exclude` it is not a filter, it is
 # an off switch, and one nothing in the rule says out loud.
 MATCH_EVERYTHING_GLOB = "**"
-
-
-def effective_interval(name, fields, config):
-    """(value, unit) this rule would actually repeat at, following the same
-    precedence the hook applies: the rule's own `remember_again_after`, else
-    its type's default. Returns None when neither says anything — the
-    session/global default then applies, and that is a property of the
-    session, not of this rule, so there is nothing here worth a note about."""
-    own = HOOK.remember_again_after_of(fields)
-    if own is not None:
-        return own
-    prefix, _rest = split_type_prefix(name, config)
-    type_default = HOOK.remember_again_after_for_type(config, prefix) if prefix else None
-    return HOOK.parse_remember_again_after(type_default, name) if type_default else None
 
 
 def filter_problems(globs, excludes, calls=()):
@@ -210,31 +184,6 @@ def verify_notes(name, fields, is_global=False):
                      f"other — the block refuses every write this rule covers, "
                      f"so the verification has nothing new to check")
     return notes
-
-
-def reinforcement_notes(name, body, fields, config):
-    """Notes about a mismatch between what a rule's text asks for and how
-    often it is set to repeat (own frontmatter or inherited type default):
-    a prohibition with reinforcement off, or a non-prohibition reinforced as
-    tightly as one — never an error, since both are legitimate choices."""
-    if not body:
-        return []
-    interval = effective_interval(name, fields, config)
-    if interval is None:
-        return []
-    value, unit = interval
-    prohibits = bool(PROHIBITION_PATTERN.search(body))
-    if prohibits and not value:
-        return [f"{name}: reads like a prohibition but remember_again_after "
-                f"is 'never' — only prohibition constraints are known to decay "
-                f"under long context; consider giving it a repeat distance"]
-    aggressive = (unit == "tokens" and value < AGGRESSIVE_INTERVAL_TOKENS) or \
-                 (unit == "calls" and value < AGGRESSIVE_INTERVAL_CALLS)
-    if not prohibits and value and aggressive:
-        return [f"{name}: repeats every {value} {unit} with no prohibition "
-                f"language in its body — requirements and conventions hold up "
-                f"without reinforcement; this may be over-treatment"]
-    return []
 
 
 def scope_findings(scope_dir, anchor=None, config=None, is_global=False):

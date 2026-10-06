@@ -15,7 +15,7 @@ from statsutil import HAS_GIT, HOOK, git, v1_entry  # noqa: E402
 SINCE = 1_700_000_000
 
 
-class MigrationTest(statsutil.StatsSandbox):
+class MigrationTest(statsutil.RepoSandbox):
     def setUp(self):
         super().setUp()
         util.write_rule(self.proj, "CONV_api.md", "src/**", "PROJECT")
@@ -35,15 +35,14 @@ class MigrationTest(statsutil.StatsSandbox):
         converted = self.stats_bytes()
         second = self.status_json()
         self.assertEqual(self.stats_bytes(), converted, "the second run rewrites nothing")
-        self.assertEqual(first["usage"], second["usage"])
-        self.assertEqual(self.usage_of(first, "CONV_api.md"),
-                         self.usage_of(second, "CONV_api.md"))
+        self.assertEqual(first, second)
         stats = json.loads(converted)
         self.assertEqual(stats["version"], 2)
         self.assertEqual(stats["since"], SINCE)
-        api = self.usage_of(first, "CONV_api.md")
-        self.assertEqual((api["injections"], api["total"]), (3, 3))
-        self.assertEqual(api["dirs"], {"src": 3})
+        api = self.rule_of(first, "CONV_api.md")
+        self.assertEqual((api["this_repo"], api["total"]), (3, 3))
+        converted_rule = stats["rules"][self.key(self.scope, "CONV_api.md")]
+        self.assertEqual(converted_rule["repos"][self.repo]["dirs"], {"src": 3})
 
     def test_the_old_file_is_left_exactly_as_it_was(self):
         self.plant_v1()
@@ -59,7 +58,7 @@ class MigrationTest(statsutil.StatsSandbox):
         self.plant_legacy({"version": 1, "since": 1, "rules": {
             self.key(self.scope, "CONV_api.md"): v1_entry(90, last=99)}})
         report = self.status_json()
-        self.assertEqual(self.usage_of(report, "CONV_api.md")["total"], 3)
+        self.assertEqual(self.rule_of(report, "CONV_api.md")["total"], 3)
         self.fire("src/web/a.py")
         self.assertEqual(self.stats()["rules"][self.key(self.scope, "CONV_api.md")]["total"], 4)
 
@@ -71,7 +70,7 @@ class MigrationTest(statsutil.StatsSandbox):
                                                   "repos": {self.repo: entry}}}})
         self.plant_v1()
         report = self.status_json()
-        self.assertEqual(self.usage_of(report, "CONV_api.md")["total"], 2)
+        self.assertEqual(self.rule_of(report, "CONV_api.md")["total"], 2)
         self.assertNotIn(self.key(self.global_scope, "GLOB_all.md"), self.stats()["rules"])
 
     def test_an_unusable_old_file_starts_the_new_one_from_zero_and_stays_put(self):
@@ -96,8 +95,8 @@ class MigrationTest(statsutil.StatsSandbox):
         self.assertFalse(os.path.exists(self.stats_file()))
         os.chmod(self.legacy_file(), 0o600)
         report = self.status_json()
-        api = self.usage_of(report, "CONV_api.md")
-        self.assertEqual((api["injections"], api["total"]), (3, 3))
+        api = self.rule_of(report, "CONV_api.md")
+        self.assertEqual((api["this_repo"], api["total"]), (3, 3))
         self.assertEqual(self.stats()["rules"][self.key(self.scope, "CONV_api.md")]["total"], 3)
 
     def test_a_project_rule_goes_to_its_repo_and_a_global_one_only_to_its_total(self):
@@ -112,8 +111,8 @@ class MigrationTest(statsutil.StatsSandbox):
         glob = rules[self.key(self.global_scope, "GLOB_all.md")]
         self.assertEqual((glob["total"], glob["last"], glob["repos"]), (7, 60, {}))
         report = self.status_json()
-        shown = self.usage_of(report, "GLOB_all.md")
-        self.assertEqual((shown["injections"], shown["total"]), (0, 7))
+        shown = self.rule_of(report, "GLOB_all.md")
+        self.assertEqual((shown["this_repo"], shown["total"]), (0, 7))
 
     def test_an_entry_of_a_rule_that_no_longer_exists_is_dropped(self):
         self.plant_v1()
@@ -153,7 +152,7 @@ class MigrationTest(statsutil.StatsSandbox):
         self.assertEqual(project["repos"][self.repo]["injections"], 4)
 
 
-class RejectedFileTest(statsutil.StatsSandbox):
+class RejectedFileTest(statsutil.RepoSandbox):
     def setUp(self):
         super().setUp()
         util.write_rule(self.proj, "CONV_api.md", "src/**", "PROJECT")
@@ -170,7 +169,8 @@ class RejectedFileTest(statsutil.StatsSandbox):
         util.write_file(self.stats_file(), "{not json")
         report = self.status_json()
         self.assert_set_aside_and_zero(b"{not json")
-        self.assertIsNone(self.usage_of(report, "CONV_api.md"))
+        api = self.rule_of(report, "CONV_api.md")
+        self.assertEqual((api["this_repo"], api["total"]), (0, 0))
 
     def test_a_file_of_an_unknown_version_is_kept_beside_too(self):
         original = json.dumps({"version": 99, "since": 1, "rules": {"x::y.md": {}}})
@@ -203,13 +203,14 @@ class RejectedFileTest(statsutil.StatsSandbox):
         self.assertFalse(os.path.exists(leftover), "a dead write ages out")
 
 
-class ThisRepoViewTest(statsutil.StatsSandbox):
-    """`narrow` and the "never injected" note look at this repo's entry and the
-    rule's total, whichever repository `status` is run from."""
+class ThisRepoViewTest(statsutil.RepoSandbox):
+    """`narrow` and `prune` look at this repo's entry and the rule's total,
+    whichever repository `status` is run from."""
 
     def setUp(self):
         super().setUp()
         util.write_rule(self.proj, "CONV_api.md", "src/**", "PROJECT")
+        util.write_rule(self.home, "GLOB_all.md", "src/**", "GLOBAL")
         self.here = os.path.realpath(self.proj)
         self.elsewhere = os.path.join(self.tmp.name, "elsewhere")
         os.makedirs(self.elsewhere)
@@ -219,33 +220,33 @@ class ThisRepoViewTest(statsutil.StatsSandbox):
         entry.update(injections=injections, first=1, last=2, dirs=dirs)
         return entry
 
-    def plant_two_repos(self):
+    def rule_from(self, name, project_dir):
+        """`name` as `status --json` shows it when run from `project_dir`."""
+        proc = self.admin("status", "--json",
+                          env={"CLAUDE_PROJECT_DIR": project_dir})
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return self.rule_of(json.loads(proc.stdout), name)
+
+    def test_the_narrow_candidate_uses_this_repos_directories(self):
         narrow = self.entry(5, {"src/api/handlers": 5})
         wide = self.entry(5, {"src/api/handlers": 3, "src/web": 2})
         self.plant({"version": 2, "since": 1, "rules": {
-            self.key(self.scope, "CONV_api.md"): {
+            self.key(self.global_scope, "GLOB_all.md"): {
                 "total": 10, "last": 2,
                 "repos": {self.here: narrow, os.path.realpath(self.elsewhere): wide}}}})
+        here = self.rule_from("GLOB_all.md", self.proj)
+        self.assertEqual(here["candidate"], "narrow")
+        self.assertIn("always under 'src/api/handlers/'", here["reason"])
+        self.assertIsNone(self.rule_from("GLOB_all.md", self.elsewhere)["candidate"])
 
-    def notes(self, project_dir):
-        proc = self.admin("status", "--root", self.proj,
-                          env={"CLAUDE_PROJECT_DIR": project_dir})
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        return proc.stdout
-
-    def test_the_narrowing_note_uses_this_repos_directories(self):
-        self.plant_two_repos()
-        self.assertIn("reaches wider", self.notes(self.proj))
-        self.assertNotIn("reaches wider", self.notes(self.elsewhere))
-
-    def test_a_rule_fired_only_elsewhere_is_not_never_injected(self):
+    def test_a_rule_fired_only_elsewhere_is_a_prune_candidate_here_with_its_total(self):
         self.plant({"version": 2, "since": 1, "rules": {
             self.key(self.scope, "CONV_api.md"): {
                 "total": 4, "last": 2,
                 "repos": {os.path.realpath(self.elsewhere): self.entry(4, {"src": 4})}}}})
-        out = self.notes(self.proj)
-        self.assertNotIn("never injected", out)
-        self.assertIn("injected 4x in other repos", out)
+        rule = self.rule_from("CONV_api.md", self.proj)
+        self.assertEqual((rule["this_repo"], rule["total"]), (0, 4))
+        self.assertEqual(rule["candidate"], "prune")
 
 
 if __name__ == "__main__":

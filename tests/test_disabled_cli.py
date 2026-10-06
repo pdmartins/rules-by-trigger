@@ -46,19 +46,21 @@ class RemoveDisablesTest(DisabledSandbox):
 
     def test_the_disabled_rule_stays_in_list_and_status_marked_as_disabled(self):
         self.fire("src/a.py")
-        before = self.usage_of(self.status_json(), "CONV_a.md")
-        self.assertEqual(before["injections"], 1)
+        before = self.rule_of(self.status_json(), "CONV_a.md")
+        self.assertEqual((before["this_repo"], before["state"]), (1, "active"))
         self.remove("CONV_a.md")
         listing = self.admin("list", "--root", self.proj)
         self.assertIn("CONV_a.md", listing.stdout)
         self.assertIn(SHOWS_DISABLED, listing.stdout)
-        rule = [r for scope in self.status_json()["scopes"]
-                for r in scope["rules"] if r["name"] == "CONV_a.md"][0]
-        self.assertFalse(rule["enabled"])
-        self.assertEqual(rule["usage"], before, "the history is kept")
+        rule = self.rule_of(self.status_json(), "CONV_a.md")
+        self.assertEqual(rule["state"], "disabled")
+        self.assertEqual((rule["this_repo"], rule["total"]),
+                         (before["this_repo"], before["total"]),
+                         "the history is kept")
+        self.assertIsNone(rule["candidate"], "a disabled rule is never a candidate")
         text = self.admin("status", "--root", self.proj,
                           env={"CLAUDE_PROJECT_DIR": self.proj}).stdout
-        self.assertIn(SHOWS_DISABLED, text)
+        self.assertIn("disabled", text)
 
     def test_a_file_that_is_not_a_rule_cannot_be_disabled(self):
         util.write_file(os.path.join(self.scope, "notes.md"), "just notes\n")
@@ -129,8 +131,7 @@ class RemoveDeleteTest(DisabledSandbox):
         proc = self.remove("CONV_a.md", "--delete")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertFalse(self.rule_exists("CONV_a.md"))
-        names = [r["name"] for scope in self.status_json()["scopes"]
-                 for r in scope["rules"]]
+        names = [r["name"] for r in self.status_json()["rules"]]
         self.assertNotIn("CONV_a.md", names)
         self.assertNotIn(key, self.stats()["rules"])
 

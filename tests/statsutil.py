@@ -82,14 +82,25 @@ class StatsSandbox(util.SandboxTestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return json.loads(proc.stdout)
 
-    def usage_of(self, report, name):
-        for scope in report["scopes"]:
-            for rule in scope["rules"]:
-                if rule["name"] == name:
-                    return rule["usage"]
+    def rule_of(self, report, name):
+        """The entry of `status --json` for a rule, by file name."""
+        for rule in report["rules"]:
+            if rule["name"] == name:
+                return rule
         raise AssertionError(f"{name} not in the report")
 
     def aside_files(self):
         directory = util.state_dir(self.home)
         return sorted(name for name in os.listdir(directory)
                       if name.startswith(HOOK.STATS_FILE_NAME + ".corrupt-"))
+
+
+class RepoSandbox(StatsSandbox):
+    """A StatsSandbox whose project is a git repository of its own, so the
+    repo `status` and the hook identify is the project whatever TMPDIR is —
+    inside another repository or not."""
+
+    def setUp(self):
+        super().setUp()
+        if HAS_GIT:
+            git("init", "-q", cwd=self.proj)

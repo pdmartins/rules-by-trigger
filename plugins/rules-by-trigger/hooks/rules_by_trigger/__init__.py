@@ -203,8 +203,9 @@ from .state import (cleanup_stale_state, close_state,
                     state_file_for)
 from .contexttokens import context_size, detect_context_regression
 from .due import agent_key_prefix, rule_key_prefix, trim_injected_rules
-from .repo import (counts_for, git_toplevel, is_above, repo_identity,
-                   repo_of_session, repo_of_state, repo_root_of, rule_base)
+from .repo import (PROJECT_DIR_ENV, counts_for, git_toplevel, is_above,
+                   repo_identity, repo_of_session, repo_of_state,
+                   repo_root_of, rule_base)
 from .statsconstants import LEGACY_STATS_FILE_NAME
 from .statsformat import (coerce_entry, coerce_rule, drop_rule, empty_entry,
                           empty_rule, empty_stats, enforce_caps,

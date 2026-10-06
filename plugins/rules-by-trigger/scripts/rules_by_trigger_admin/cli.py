@@ -34,6 +34,9 @@ COMMANDS = {"init": cmd_init, "list": cmd_list, "show": cmd_show,
 # the rule's body. `status --json` is exempt too, through `args.json`.
 SETUP_NOTICE_EXEMPT_COMMANDS = ("doctor", "show")
 
+# Commands that run without `--root`/`--global`.
+COMMANDS_WITHOUT_SCOPE = ("status",)
+
 # `block` answered to `enforce` until 0.7.0, alongside the frontmatter key of
 # the same name. Kept as an alias — and out of COMMANDS, so `--help` teaches
 # only the current name — because the old one is written into scripts and into
@@ -46,8 +49,10 @@ COMMAND_ALIASES = {"enforce": "block"}
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=list(COMMANDS) + list(COMMAND_ALIASES))
-    scope = parser.add_mutually_exclusive_group(required=True)
-    scope.add_argument("--root", help="project root (the folder containing .claude/)")
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument("--root", help="project root (the folder containing "
+                                      ".claude/); on status, the folder it "
+                                      "starts from")
     scope.add_argument("--global", dest="use_global", action="store_true",
                        help="global scope (~/.claude/rules-by-trigger)")
     parser.add_argument("--glob", action="append", default=[],
@@ -90,9 +95,11 @@ def main():
                         help="update: switch a disabled rule back on (with no "
                              "body on stdin, nothing else changes)")
     parser.add_argument("--path", help="file/folder to resolve (which; optional "
-                                       "on status)")
+                                       "on status, where relative paths start "
+                                       "from the folder status starts from)")
     parser.add_argument("--json", action="store_true",
-                        help="status: print the report as JSON")
+                        help="status: print the rules and their improvement "
+                             "candidates as JSON")
     parser.add_argument("--to-global", dest="to_global", action="store_true",
                         help="move: destination is the global scope")
     parser.add_argument("--to-root", dest="to_root",
@@ -137,6 +144,11 @@ def main():
                         help="block: write the native deny entries a project's "
                              "block: true rules need into its settings.json")
     args = parser.parse_args()
+
+    # `status` alone may leave the scope out: it then starts from
+    # CLAUDE_PROJECT_DIR or the current folder.
+    if args.command not in COMMANDS_WITHOUT_SCOPE and not (args.root or args.use_global):
+        parser.error("one of the arguments --root --global is required")
 
     if args.command in COMMAND_ALIASES:
         current = COMMAND_ALIASES[args.command]

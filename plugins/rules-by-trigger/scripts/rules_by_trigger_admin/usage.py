@@ -1,38 +1,30 @@
-"""What the hook's usage stats say about each rule, read by `status`.
+"""What the hook's usage stats say about each rule, and the improvement
+candidate they make it.
 
-Two deterministic signals a human needs before pruning or narrowing a rule:
-a rule that has never fired since stats began, and a rule that fires often
-but always under one subfolder of the glob it declares. A rule that also
-declares `verify:` carries a third number — how often its command ran and how
-often it failed — which is evidence of a different kind: not whether the rule
-is read, but whether what it asks for holds."""
-
-import datetime
+Three deterministic signals a human needs before touching a rule: it never
+fired (prune), it fires often but always under one subfolder of the glob it
+declares (narrow), or the validator says its repeat distance does not fit its
+text (repeat). `status --json` reports the first that applies."""
 
 from .common import HOOK
+from .reinforcement import reinforcement_reason
 
 # Below this many injections a "always under one folder" pattern is noise.
 MIN_INJECTIONS_TO_NARROW = 5
 GLOB_METACHARS = "*?"
 
+# What `status --json` calls each kind of candidate, in priority order.
+CANDIDATE_PRUNE = "prune"
+CANDIDATE_NARROW = "narrow"
+CANDIDATE_REPEAT = "repeat"
+
 # ---- user-visible text ------------------------------------------------------
-USAGE_LABEL = "injected {injections}x in {sessions} session(s), last {last}"
-USAGE_ELSEWHERE = "injected {total}x in other repos"
-USAGE_REPEATS = "{reinjections} repeat(s)"
-USAGE_VERIFICATIONS = "verified {verifications}, failed {failures}"
-USAGE_SEPARATOR = ", "
-NOTE_NEVER = ("never injected since usage stats began ({since}): {names} — a "
-              "glob that matches nothing here, or a rule nobody needs")
-NOTE_NARROW = ("{name}: injected {injections}x, always under {common!r}, while "
-               "its glob {glob!r} reaches wider — consider `update --rule "
+REASON_PRUNE_PROJECT = "never fired in this repo"
+REASON_PRUNE_GLOBAL = "never fired in any repo"
+NOTE_NARROW = ("injected {injections}x, always under {common!r}, while its "
+               "glob {glob!r} reaches wider — consider `update --rule "
                "{name!r} --glob {suggested!r}`")
 # -----------------------------------------------------------------------------
-
-
-def day_of(timestamp):
-    if not timestamp:
-        return "?"
-    return datetime.datetime.fromtimestamp(timestamp, datetime.timezone.utc).date().isoformat()
 
 
 def usage_of(stats, scope_dir, name, repo):
@@ -45,53 +37,12 @@ def usage_of(stats, scope_dir, name, repo):
     return {**(rule["repos"].get(repo) or HOOK.empty_entry()), "total": rule["total"]}
 
 
-def public_usage(entry):
-    """The entry as `status --json` shows it: this repo's counters and dates,
-    never the session ids, and the rule's total."""
+def counts_of(entry):
+    """(fires in this repo, fires in total) — a fire is an injection. A rule
+    with no record at all has fired nowhere."""
     if entry is None:
-        return None
-    return {"total": entry["total"], "injections": entry["injections"], "reinjections": entry["reinjections"],
-            "sessions": entry["sessions"], "first": day_of(entry["first"]),
-            "last": day_of(entry["last"]), "dirs": entry["dirs"],
-            "globs": entry["globs"], "verifications": entry["verifications"],
-            "failures": entry["failures"]}
-
-
-def usage_label(entry):
-    """The one-line summary `status` prints after a rule, or None when there is
-    nothing recorded to print.
-
-    Each half is left out when its counter is zero, and for the same reason:
-    a rule that never repeats and never verifies would otherwise carry two
-    columns of zeroes on every line. A rule that only ever verified — its glob
-    covers writes, its text has never been injected — is not made to claim
-    "injected 0x, last ?" either; it reports the number it has."""
-    if entry is None:
-        return None
-    parts = []
-    if entry["injections"]:
-        parts.append(USAGE_LABEL.format(injections=entry["injections"],
-                                        sessions=entry["sessions"],
-                                        last=day_of(entry["last"])))
-    elif entry["total"]:
-        parts.append(USAGE_ELSEWHERE.format(total=entry["total"]))
-    if entry["reinjections"]:
-        parts.append(USAGE_REPEATS.format(reinjections=entry["reinjections"]))
-    if entry["verifications"]:
-        parts.append(USAGE_VERIFICATIONS.format(
-            verifications=entry["verifications"], failures=entry["failures"]))
-    return USAGE_SEPARATOR.join(parts) or None
-
-
-def never_injected(entry):
-    """Whether a rule's text has never reached a model since stats began.
-
-    Not the same as "has no entry": a rule whose `verify:` ran has an entry
-    with zero injections, and it is exactly as unread as one with no entry at
-    all — a command running says nothing about the guidance beside it. It is
-    the rule's total that decides, every repo counted: a rule that fired
-    elsewhere is read, even if never here."""
-    return entry is None or not entry["total"]
+        return 0, 0
+    return entry["injections"], entry["total"]
 
 
 def segments_of(path):
@@ -147,24 +98,23 @@ def narrowing_note(name, globs, entry):
                               suggested=common_path + "/**")
 
 
-def usage_notes(stats, scope_dir, rules, repo):
-    """Notes for one scope, from `repo`'s point of view. `rules` is
-    [(name, globs)]."""
-    if not stats["rules"]:
-        return []  # nothing recorded anywhere yet: silence, not forty "never"s
-    notes = []
-    never = [name for name, _globs in rules
-             if never_injected(usage_of(stats, scope_dir, name, repo))]
-    if never:
-        notes.append(NOTE_NEVER.format(since=day_of(stats["since"]),
-                                       names=", ".join(never)))
-    for name, globs in rules:
-        note = narrowing_note(name, globs, usage_of(stats, scope_dir, name, repo))
-        if note:
-            notes.append(note)
-    return notes
+def candidate_of(name, fields, body, config, is_global, entry):
+    """(candidate, reason) for one rule, or (None, None) when it needs nothing.
 
-
-def usage_since(stats):
-    return day_of(stats["since"]) if stats["rules"] else None
-
+    A rule that fits several candidates gets the first in this order: prune,
+    narrow, repeat. A disabled rule is never a candidate — it is already off.
+    Prune asks for neither age nor minimum use. A project rule never fired
+    when it has no fire in THIS repo; a global rule serves every repo, so only
+    a total of 0 means nobody ever needed it."""
+    if not HOOK.is_enabled(fields):
+        return None, None
+    this_repo, total = counts_of(entry)
+    if (total if is_global else this_repo) == 0:
+        return CANDIDATE_PRUNE, REASON_PRUNE_GLOBAL if is_global else REASON_PRUNE_PROJECT
+    narrow = narrowing_note(name, HOOK.globs_of(fields), entry)
+    if narrow:
+        return CANDIDATE_NARROW, narrow
+    repeat = reinforcement_reason(name, body, fields, config)
+    if repeat:
+        return CANDIDATE_REPEAT, repeat
+    return None, None

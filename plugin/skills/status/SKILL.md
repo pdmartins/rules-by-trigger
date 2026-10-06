@@ -1,7 +1,9 @@
 ---
+name: status
 description: Inventory and health check for rules-by-trigger — environment, both scopes with their findings, which rules cover a path, the configuration in force
 argument-hint: "[file or folder to check]"
 allowed-tools: ["Bash"]
+disable-model-invocation: true
 ---
 
 Run this one command and relay its output as a short list of findings, in the

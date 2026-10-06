@@ -793,8 +793,7 @@ plugin/                           THE PLUGIN — this, and only this, is install
 ├── hooks/                        PreToolUse injection (incl. injection.py, the shared delivery path), Stop verification, SessionStart
 ├── bin/                          launchers (POSIX + .cmd), on PATH when installed
 ├── scripts/                      the management CLI the skills drive
-├── skills/                       manage, doctor, improve
-└── commands/                     /rules-by-trigger:status
+└── skills/                       manage, doctor, improve, status
 tests/                            development only
 publish.sh                        development only
 README.md  CHANGELOG.md  LICENSE

@@ -14,6 +14,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 - **The plugin ships its own `LICENSE`.** `plugin/LICENSE` is a copy of the
   root one. Why: an install copies only `plugin/`, and the MIT notice has to
   travel with every copy.
+- **`/rules-by-trigger:status` is a skill.** It was a file in `commands/`; it
+  is now `skills/status/SKILL.md`, so the plugin has no `commands/` directory.
+  You still type `/rules-by-trigger:status`, it stays user-only
+  (`disable-model-invocation`), and the hook that shows its table still fires.
+  Why: skills are the current form of slash commands, and one kind is simpler.
 
 ## 0.11.0 — 2026-09-30
 

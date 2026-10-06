@@ -21,6 +21,11 @@ COMMAND_NAME = "rules-by-trigger:status"
 EVENT = "UserPromptExpansion"
 HOOKS_JSON = os.path.join(util.PLUGIN_ROOT, "hooks", "hooks.json")
 HOOK_TIMEOUT_SECONDS = 10
+PLUGIN_JSON = os.path.join(util.PLUGIN_ROOT, ".claude-plugin", "plugin.json")
+STATUS_SKILL = os.path.join(util.PLUGIN_ROOT, "skills", "status", "SKILL.md")
+COMMANDS_DIR = os.path.join(util.PLUGIN_ROOT, "commands")
+SKILL_NAME = "status"
+USER_ONLY_LINE = "disable-model-invocation: true"
 NESTED_RULE = "CONV_nested.md"
 ROOT_RULE = "CONV_root.md"
 SHORT_TIMEOUT_SECONDS = 0.5
@@ -178,6 +183,19 @@ class StatusCommandTest(statsutil.RepoSandbox):
         self.assertTrue(hook["command"].endswith(
             f"bin/rules-by-trigger-hook\" {STATUS_COMMAND_FLAG}"))
         self.assertLess(HOOK.statuscommand.CLI_TIMEOUT_SECONDS, hook["timeout"])
+
+    def test_the_matcher_names_the_status_skill_and_it_is_user_only(self):
+        """The command is a skill: Claude Code names a typed plugin skill
+        `<plugin>:<skill>`, so the matcher must be exactly that, and the skill
+        must stay out of the model's reach, as the command was."""
+        with open(PLUGIN_JSON, encoding="utf-8") as handle:
+            plugin_name = json.load(handle)["name"]
+        self.assertEqual(f"{plugin_name}:{SKILL_NAME}", COMMAND_NAME)
+        with open(STATUS_SKILL, encoding="utf-8") as handle:
+            frontmatter = handle.read().split("\n---\n", 1)[0].splitlines()
+        self.assertIn(f"name: {SKILL_NAME}", frontmatter)
+        self.assertIn(USER_ONLY_LINE, frontmatter)
+        self.assertFalse(os.path.exists(COMMANDS_DIR))
 
 
 class StatusGitFailureTest(statsutil.RepoSandbox):

@@ -13,7 +13,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # The plugin is one directory of this repository — everything Claude Code
 # installs lives under PLUGIN_ROOT, and everything outside it (this suite,
 # publish.sh) is development scaffolding that never ships.
-PLUGIN_ROOT = os.path.join(REPO_ROOT, "plugins", "rules-by-trigger")
+PLUGIN_ROOT = os.path.join(REPO_ROOT, "plugin")
 HOOK_PATH = os.path.join(PLUGIN_ROOT, "hooks", "rules-by-trigger.py")
 ADMIN_PATH = os.path.join(PLUGIN_ROOT, "scripts", "rules-by-trigger-admin.py")
 RULES_DIR_RELPATH = os.path.join(".claude", "rules-by-trigger")

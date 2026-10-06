@@ -5,6 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
+### Changed
+
+- **The plugin lives in `plugin/`.** It was `plugins/rules-by-trigger/`. The
+  directory is still exactly what an install copies, and nothing inside it
+  moved. The marketplace `source` and `publish.sh` point at the new path.
+  Why: one layout across all the plugin repositories.
+
 ## 0.11.0 — 2026-09-30
 
 ### Changed

@@ -76,7 +76,7 @@ class NoticeTest(SetupTestCase):
         proc = self.admin("status", "--root", self.proj, "--json")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         report = json.loads(proc.stdout)  # would raise if the notice leaked in
-        self.assertIn("scopes", report)
+        self.assertIn("rules", report)
 
     def test_a_project_language_does_not_switch_the_notice(self):
         """The notice is the plugin's own config layer only — no scope dirs —

@@ -1,6 +1,5 @@
-"""`status` reads the hook's usage stats: a per-rule label, a "never injected"
-note once stats exist, and a narrowing note when every injection sits under
-one subfolder of the glob."""
+"""`status` reads the hook's usage stats: the fires of each rule, and the
+narrow candidate when every injection sits under one subfolder of the glob."""
 
 import json
 import os
@@ -8,67 +7,71 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import statsutil  # noqa: E402
 import util  # noqa: E402
 
 HOOK = util.load_hook_module()
 
 
-class UsageStatusTest(util.SandboxTestCase):
+class UsageStatusTest(statsutil.RepoSandbox):
+    """What a real session leaves in the usage file, as `status --json` reads
+    it: the fires of this repo and the narrow candidate."""
     PROJECT_SUBDIRS = ("src/api/handlers", "src/web")
 
+    def setUp(self):
+        super().setUp()
+        util.write_config(self.global_scope, {"language": "en"})  # setup is done
+
     def touch(self, relative, session):
-        util.run_hook(util.read_payload("Read", os.path.join(self.proj, relative),
-                                        session=session, cwd=self.proj), self.home)
-
-    def status(self, *extra):
-        proc = self.admin("status", "--root", self.proj, *extra)
+        proc = util.run_hook(util.read_payload("Read", os.path.join(self.proj, relative),
+                                               session=session, cwd=self.proj),
+                             self.home, env={"CLAUDE_PROJECT_DIR": self.proj})
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        return proc.stdout
 
-    def test_no_stats_yet_means_no_usage_notes(self):
+    def rules(self):
+        proc = self.admin("status", "--root", self.proj, "--json")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return {rule["name"]: rule for rule in json.loads(proc.stdout)["rules"]}
+
+    def test_no_stats_yet_means_every_project_rule_is_a_prune_candidate(self):
         util.write_rule(self.proj, "CONV_api.md", "src/**", "API")
-        out = self.status()
-        self.assertIn("usage stats: nothing recorded yet", out)
-        self.assertNotIn("never injected", out)
+        rule = self.rules()["CONV_api.md"]
+        self.assertEqual((rule["this_repo"], rule["total"], rule["candidate"]),
+                         (0, 0, "prune"))
 
-    def test_usage_label_and_never_injected_note(self):
+    def test_fires_are_counted_per_injection_and_the_unfired_rule_is_pruned(self):
         util.write_rule(self.proj, "CONV_api.md", "src/**", "API")
         util.write_rule(self.proj, "CONV_dead.md", "docs/**", "DOCS")
         self.touch("src/web/a.py", "s1")
         self.touch("src/web/a.py", "s2")
-        out = self.status()
-        self.assertIn("usage stats since", out)
-        self.assertIn("CONV_api.md  <-  src/**  (3 chars; injected 2x in 2 session(s), last", out)
-        self.assertIn("note: never injected since usage stats began", out)
-        self.assertIn("CONV_dead.md", out.split("never injected")[1])
-        report = json.loads(self.status("--json"))
-        rules = {rule["name"]: rule for rule in report["scopes"][1]["rules"]}
-        self.assertEqual(rules["CONV_api.md"]["usage"]["injections"], 2)
-        self.assertEqual(rules["CONV_api.md"]["usage"]["dirs"], {"src/web": 2})
-        self.assertNotIn("recent_sessions", rules["CONV_api.md"]["usage"])
-        self.assertIsNone(rules["CONV_dead.md"]["usage"])
+        rules = self.rules()
+        self.assertEqual((rules["CONV_api.md"]["this_repo"], rules["CONV_api.md"]["total"]),
+                         (2, 2))
+        self.assertIsNone(rules["CONV_api.md"]["candidate"])
+        self.assertEqual(rules["CONV_dead.md"]["candidate"], "prune")
+        self.assertEqual(rules["CONV_dead.md"]["reason"], "never fired in this repo")
 
-    def test_narrowing_note_when_every_injection_sits_under_one_subfolder(self):
+    def test_narrow_when_every_injection_sits_under_one_subfolder(self):
         util.write_rule(self.proj, "CONV_api.md", "src/**", "API")
         for index in range(5):
             self.touch("src/api/handlers/a.py", f"s{index}")
-        out = self.status()
-        self.assertIn("note: CONV_api.md: injected 5x, always under 'src/api/handlers/', "
-                      "while its glob 'src/**' reaches wider", out)
-        self.assertIn("--glob 'src/api/handlers/**'", out)
+        rule = self.rules()["CONV_api.md"]
+        self.assertEqual(rule["candidate"], "narrow")
+        self.assertIn("always under 'src/api/handlers/'", rule["reason"])
+        self.assertIn("--glob 'src/api/handlers/**'", rule["reason"])
 
-    def test_no_narrowing_note_when_injections_spread_across_the_glob(self):
+    def test_no_narrow_when_injections_spread_across_the_glob(self):
         util.write_rule(self.proj, "CONV_api.md", "src/**", "API")
         for index in range(5):
             self.touch("src/api/handlers/a.py", f"s{index}")
         self.touch("src/web/a.py", "other")
-        self.assertNotIn("reaches wider", self.status())
+        self.assertIsNone(self.rules()["CONV_api.md"]["candidate"])
 
-    def test_no_narrowing_note_below_the_injection_threshold(self):
+    def test_no_narrow_below_the_injection_threshold(self):
         util.write_rule(self.proj, "CONV_api.md", "src/**", "API")
         for index in range(4):
             self.touch("src/api/handlers/a.py", f"s{index}")
-        self.assertNotIn("reaches wider", self.status())
+        self.assertIsNone(self.rules()["CONV_api.md"]["candidate"])
 
 
 class NarrowingHelpersTest(unittest.TestCase):

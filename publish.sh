@@ -72,9 +72,9 @@ REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO_DIR"
 
 # The repository root is the marketplace plus the development scaffolding; the
-# plugin itself is one directory below, and that directory is exactly what
-# `claude plugin install` copies.
-PLUGIN_DIR="$REPO_DIR/plugins/rules-by-trigger"
+# plugin itself is the `plugin/` directory below, and that directory is exactly
+# what `claude plugin install` copies.
+PLUGIN_DIR="$REPO_DIR/plugin"
 PLUGIN_JSON="$PLUGIN_DIR/.claude-plugin/plugin.json"
 MARKETPLACE_JSON="$REPO_DIR/.claude-plugin/marketplace.json"
 CHANGELOG_MD="$REPO_DIR/CHANGELOG.md"

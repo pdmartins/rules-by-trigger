@@ -173,12 +173,14 @@ class AdminTest(util.SandboxTestCase):
     def test_remove_by_name_and_by_glob(self):
         self.admin("add", "--root", self.proj, "--glob", "src/**",
                    "--type", "OTHR", stdin="A")
-        proc = self.admin("remove", "--root", self.proj, "--rule", "OTHR_src.md")
+        proc = self.admin("remove", "--root", self.proj, "--rule", "OTHR_src.md",
+                          "--delete")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertFalse(os.path.isfile(os.path.join(self.scope, "OTHR_src.md")))
         self.admin("add", "--root", self.proj, "--glob", "lib/**",
                    "--type", "OTHR", stdin="B")
-        proc = self.admin("remove", "--root", self.proj, "--glob", "lib/**")
+        proc = self.admin("remove", "--root", self.proj, "--glob", "lib/**",
+                          "--delete")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertFalse(os.path.isfile(os.path.join(self.scope, "OTHR_lib.md")))
 

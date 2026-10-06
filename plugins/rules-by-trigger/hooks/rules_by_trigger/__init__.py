@@ -67,7 +67,16 @@ Layout — one concern per module, none over 400 lines:
     discovery.py    which scopes apply, and which are safe to read
     rules.py        rule names, reading a rule file, indexing a scope
     matching.py     the touched path, and the rules it matches
-    state.py        per-session dedup, context size, repeat scheduling
+    state.py        per-session dedup and the session's repository
+    contexttokens.py the context size, and the drop that means a compaction
+    repo.py         which repository a firing is counted for, and where a
+                    rule lives (the one identity the hook, the migration and
+                    `status` share)
+    statsconstants.py the usage file's tunables, re-exported by constants.py
+    statsformat.py  the usage file's shape (per repository and rule), its caps
+                    and the operations a rule's life asks of it
+    statsmigrate.py the first usage format turned into the current one
+    stats.py        reading, recording and atomically writing the usage file
     due.py          the dedup key, when a rule is due again, edit cleanup
     written.py      the paths written since the last verification
     context.py      assembling the injected text, defanging forged framing
@@ -115,7 +124,8 @@ from .constants import (ADMIN_COMMAND, AGENT_KEY_PREFIX, BRAZILIAN_PORTUGUESE,
                         PLUGIN_ROOT, REMEMBER_AGAIN_ENV_VAR,
                         RULE_NAME_EXTRA_CHARS, RULE_SEPARATOR, RULE_WARN_CHARS,
                         RULES_CLOSE_TAG, RULES_DIR_RELPATH, RULES_OPEN_TAG,
-                        MAX_STATS_DIRS_PER_RULE, MAX_STATS_RULES,
+                        MAX_STATS_DIRS_PER_RULE, MAX_STATS_REPOS_PER_RULE,
+                        MAX_STATS_RULES, STATS_VERSION,
                         NOTICE_MARKER,
                         SESSION_NOTICE, SHOW_INJECTIONS_KEY,
                         STATE_MAX_AGE_SECONDS, STATS_FILE_NAME,
@@ -185,12 +195,22 @@ from .matching import (applied_glob, call_trigger_of, collect_call_candidates,
                        first_matching_glob, is_inside_rules_dir, path_targets,
                        tool_allows, tool_kind)
 from .state import (cleanup_stale_state, close_state,
-                    coerce_seen_entry, context_size, detect_context_regression,
-                    is_due, lock_exclusive, open_state, pop_superseded_entries,
-                    save_state, state_dir, state_file_for)
+                    coerce_seen_entry, is_due, lock_exclusive, open_state,
+                    pop_superseded_entries, save_state, state_dir,
+                    state_file_for)
+from .contexttokens import context_size, detect_context_regression
 from .due import agent_key_prefix, rule_key_prefix, trim_injected_rules
-from .stats import (load_stats, matched_dir, record_injections,
-                    record_verifications, rule_key, stats_path, update_stats)
+from .repo import (counts_for, git_toplevel, is_above, repo_identity,
+                   repo_of_session, repo_of_state, repo_root_of, rule_base)
+from .statsconstants import LEGACY_STATS_FILE_NAME
+from .statsformat import (coerce_entry, coerce_rule, drop_rule, empty_entry,
+                          empty_rule, empty_stats, enforce_caps,
+                          keep_one_repo, move_rule)
+from .statsmigrate import convert_v1
+from .stats import (drop_rule_usage, keep_one_repo_usage, load_stats,
+                    matched_dir, move_rule_usage, parse_stats,
+                    record_injections, record_verifications, rule_key,
+                    stats_path, update_stats)
 from .written import (coerce_written, record_rules_written, record_written,
                       take_written)
 from .context import build_context, defang, neutralize

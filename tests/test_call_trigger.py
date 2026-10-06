@@ -198,11 +198,14 @@ class CallTriggerEndToEndTest(util.SandboxTestCase):
     def test_stats_record_the_trigger_text_and_no_directory(self):
         write_call_rule(self.global_scope, "workflow.md", WORKFLOW_CALL,
                         "USE THE SCRIPT API")
-        util.run_hook(call_payload(WORKFLOW_SKILL, cwd=self.proj), self.home)
+        util.run_hook(call_payload(WORKFLOW_SKILL, cwd=self.proj), self.home,
+                      env={"CLAUDE_PROJECT_DIR": self.proj})
         stats_file = os.path.join(util.state_dir(self.home), HOOK.STATS_FILE_NAME)
         with open(stats_file, encoding="utf-8") as handle:
             stats = json.load(handle)
-        entry = stats["rules"][f"{os.path.realpath(self.global_scope)}::workflow.md"]
+        rule = stats["rules"][f"{os.path.realpath(self.global_scope)}::workflow.md"]
+        entry = rule["repos"][os.path.realpath(self.proj)]
+        self.assertEqual(rule["total"], 1)
         self.assertEqual(entry["injections"], 1)
         self.assertEqual(entry["globs"], {WORKFLOW_CALL: 1})
         self.assertEqual(entry["dirs"], {})

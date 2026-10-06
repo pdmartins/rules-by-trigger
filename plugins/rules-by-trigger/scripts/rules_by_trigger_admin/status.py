@@ -99,7 +99,7 @@ def rule_entry(name, fields, body, config, usage):
     }
 
 
-def scope_report(label, scope_dir, anchor, config, is_global, stats):
+def scope_report(label, scope_dir, anchor, config, is_global, stats, repo):
     report = {"scope": label, "directory": scope_dir,
               "exists": os.path.isdir(scope_dir), "rules": [], "not_rules": [],
               "legacy_map": False, "notes": [], "problems": []}
@@ -107,12 +107,13 @@ def scope_report(label, scope_dir, anchor, config, is_global, stats):
         return report
     for name, fields, body in rules_in(scope_dir, HOOK.max_rule_chars(config)):
         report["rules"].append(rule_entry(name, fields, body, config,
-                                          usage_of(stats, scope_dir, name)))
+                                          usage_of(stats, scope_dir, name, repo)))
     report["not_rules"] = other_markdown_in(scope_dir)
     report["legacy_map"] = HOOK.has_legacy_map(scope_dir)
     notes, problems, _count = scope_findings(scope_dir, anchor, config, is_global)
     notes.extend(usage_notes(stats, scope_dir,
-                             [(rule["name"], rule["globs"]) for rule in report["rules"]]))
+                             [(rule["name"], rule["globs"]) for rule in report["rules"]],
+                             repo))
     report["notes"], report["problems"] = notes, problems
     return report
 
@@ -182,14 +183,16 @@ def repeat_report():
 def collect(args):
     report = environment_report()
     stats = HOOK.load_stats()
-    report["usage"] = {"since": usage_since(stats), "path": HOOK.stats_path()}
+    repo = HOOK.repo_identity()
+    report["usage"] = {"since": usage_since(stats), "path": HOOK.stats_path(),
+                       "repo": repo}
     report["scopes"] = []
     coverage = {"path": args.path, "by_scope": {}} if args.path else None
     for label, target in scope_targets(args):
         scope_dir, anchor = scope_dir_and_anchor(target)
         config = config_for(target)
         report["scopes"].append(scope_report(label, scope_dir, anchor, config,
-                                             target.use_global, stats))
+                                             target.use_global, stats, repo))
         if coverage is not None:
             entries, shown = coverage_of(scope_dir, anchor, target.use_global,
                                          args.path, args.tool)

@@ -175,8 +175,9 @@ def rules_injected_in(stats, session_id):
     recent-sessions list per rule is bounded, so this is what is remembered,
     not necessarily everything that happened."""
     names = []
-    for key, entry in stats["rules"].items():
-        if session_id in entry.get("recent_sessions", []):
+    for key, rule in stats["rules"].items():
+        if any(session_id in entry["recent_sessions"]
+               for entry in rule["repos"].values()):
             names.append(key.rsplit("::", 1)[-1])
     return sorted(names)
 

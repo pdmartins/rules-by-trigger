@@ -5,6 +5,14 @@ place, and so no other module has to import a sibling just to complain."""
 import os
 import sys
 
+# Usage-stats tunables live in `statsconstants.py` (split out when this module
+# reached its line ceiling) and are re-exported here.
+from .statsconstants import (GIT_ROOT_TIMEOUT_SECONDS,  # noqa: F401
+                             MAX_STATS_DIRS_PER_RULE, MAX_STATS_GLOBS_PER_RULE,
+                             MAX_STATS_RECENT_SESSIONS, MAX_STATS_REPOS_PER_RULE,
+                             MAX_STATS_RULES, STATS_FILE_NAME,
+                             STATS_READ_LIMIT_BYTES, STATS_VERSION)
+
 
 # hooks/rules_by_trigger/constants.py -> the plugin root is three levels up.
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
@@ -155,15 +163,6 @@ STATE_MAX_AGE_SECONDS = 14 * 24 * 3600
 # directory, so its deliveries never share a key with the main conversation's
 # or another subagent's (see `due.agent_key_prefix`).
 AGENT_KEY_PREFIX = "agent::"
-# Per-rule usage lives beside the session state, in one file that the stale
-# sweep never touches: it is the record that outlives sessions on purpose.
-# Every collection in it is capped so it stays a few KB however long it lives.
-STATS_FILE_NAME = "usage-stats.json"
-STATS_READ_LIMIT_BYTES = 4 * 1024 * 1024
-MAX_STATS_RULES = 512
-MAX_STATS_DIRS_PER_RULE = 20
-MAX_STATS_GLOBS_PER_RULE = 16
-MAX_STATS_RECENT_SESSIONS = 16
 STATE_READ_CHUNK_BYTES = 64 * 1024  # one read normally swallows the file
 
 # How far the context may move on before an already-injected rule is repeated.

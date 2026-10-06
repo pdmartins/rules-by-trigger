@@ -26,11 +26,13 @@ class StatsTest(util.SandboxTestCase):
     def touch(self, relative, session="s1"):
         path = os.path.join(self.proj, relative)
         return util.run_hook(util.read_payload("Read", path, session=session,
-                                               cwd=self.proj), self.home)
+                                               cwd=self.proj), self.home,
+                             env={"CLAUDE_PROJECT_DIR": self.proj})
 
     def entry(self, name):
+        """This repo's entry for a rule (the file keeps one per repo)."""
         key = f"{os.path.realpath(self.scope)}::{name}"
-        return self.stats()["rules"][key]
+        return self.stats()["rules"][key]["repos"][os.path.realpath(self.proj)]
 
     def test_an_injection_is_counted_with_its_directory_and_glob(self):
         util.write_rule(self.proj, "CONV_api.md", "src/**", "API")

@@ -1,5 +1,6 @@
-"""Per-session state: what has already been injected, how far the context
-has moved since, and when a rule is due to be sent again.
+"""Per-session state: what has already been injected, which repository the
+session belongs to, and when a rule is due to be sent again (the context
+measure behind that lives in `contexttokens.py`).
 
 Every failure in here degrades to "stateless but still injecting" — never to
 a blocked tool call."""
@@ -13,9 +14,9 @@ import time
 
 from .constants import (MAX_RULES_WRITTEN, MAX_SESSION_ID_CHARS,
                         STATE_MAX_AGE_SECONDS,
-                        STATE_READ_CHUNK_BYTES, STATS_FILE_NAME,
-                        TOKEN_REGRESSION_SLACK, TRANSCRIPT_TAIL_BYTES,
-                        coerce_int, warn)
+                        STATE_READ_CHUNK_BYTES, coerce_int, warn)
+from .statsconstants import (ASIDE_SUFFIX, LEGACY_STATS_FILE_NAME,
+                             LOCK_SUFFIX, STATS_FILE_NAME)
 from .discovery import is_safely_owned
 # Re-exported: `is_due` and `pop_superseded_entries` moved to `due.py` when this
 # module reached its line ceiling, and their callers still address them here.
@@ -138,66 +139,6 @@ def coerce_seen_entry(value):
     return [calls, tokens, reinjections]
 
 
-def context_size(payload):
-    """Tokens of context in this session, or None when it cannot be measured.
-
-    The count is read from the transcript the harness already writes: the last
-    `usage` record is what the API itself billed, not an estimate from character
-    counts. Only the tail of the file is read — a transcript reaches several
-    megabytes, and reading one per tool call would cost more than every other
-    thing this hook does put together.
-
-    Two known imprecisions, both acceptable against a threshold of tens of
-    thousands: the record describes the *previous* request, so it lags by one
-    turn; and after a compaction the number drops, which is exactly when
-    SessionStart(compact) already clears the state.
-
-    Returns None when there is no transcript, it cannot be read, or no usage
-    record is found — the caller then falls back to counting tool calls.
-    This is a capability, not a dependency: losing it costs precision, not
-    function.
-    """
-    path = payload.get("transcript_path")
-    if not isinstance(path, str) or not path:
-        return None
-    try:
-        size = os.path.getsize(path)
-        with open(path, "rb") as handle:
-            if size > TRANSCRIPT_TAIL_BYTES:
-                handle.seek(size - TRANSCRIPT_TAIL_BYTES)
-                handle.readline()  # drop the partial line the seek landed in
-            tail = handle.read()
-    except OSError as exc:
-        warn(f"transcript not readable ({exc}); counting tool calls instead")
-        return None
-    # Backwards: the answer is the LAST usable record in the tail, so the first
-    # one found from the end is it — the records before it were parsed in full
-    # only to be overwritten.
-    for line in reversed(tail.decode("utf-8", "replace").splitlines()):
-        if '"usage"' not in line:
-            continue
-        try:
-            record = json.loads(line)
-        except ValueError:
-            continue
-        message = record.get("message")
-        message = message if isinstance(message, dict) else {}
-        usage = message.get("usage")
-        if not isinstance(usage, dict):
-            usage = record.get("usage")
-        if not isinstance(usage, dict):
-            continue
-        counted = 0
-        for key in ("input_tokens", "cache_creation_input_tokens",
-                    "cache_read_input_tokens", "output_tokens"):
-            value = usage.get(key)
-            if isinstance(value, int) and value > 0:
-                counted += value
-        if counted:
-            return counted
-    return None
-
-
 def empty_state(rules_written=None):
     """The state shape shared by every caller that builds one from scratch —
     `open_state` when there is nothing to read yet, and `reset_session` in
@@ -208,7 +149,8 @@ def empty_state(rules_written=None):
     `rules_written` seeds the one key a reset deliberately keeps; every
     other caller leaves it at the default, empty list."""
     return {"calls": 0, "injected_rules": {}, "unverified_writes": [],
-            "rules_written": list(rules_written) if rules_written else []}
+            "rules_written": list(rules_written) if rules_written else [],
+            "repo": None}
 
 
 def open_state(state_path):
@@ -218,7 +160,9 @@ def open_state(state_path):
              "injected_rules": {dedup_key: [call number, context tokens or None,
                                             reinjections already sent]},
              "unverified_writes": [absolute path, ...],
-             "rules_written": [absolute path, ...]}.
+             "rules_written": [absolute path, ...],
+             "repo": repository root the session's usage is counted for, or
+                     None until the first firing (see `repo.repo_of_state`)}.
 
     A dedup key in `injected_rules` is `<agent prefix><scope dir>::<rule
     name>::<digest>` (see `due.rule_key_prefix`); the same map also holds
@@ -304,9 +248,11 @@ def open_state(state_path):
         unverified_writes = coerce_written(data.get("unverified_writes"))
         rules_written = coerce_written(data.get("rules_written"),
                                        MAX_RULES_WRITTEN)
+        repo = data.get("repo")
         return fd, {"calls": calls, "injected_rules": injected_rules,
                     "unverified_writes": unverified_writes,
-                    "rules_written": rules_written}
+                    "rules_written": rules_written,
+                    "repo": repo if isinstance(repo, str) and repo else None}
     except Exception as exc:
         warn(f"failed reading state {state_path}: {exc}")
         return None, empty
@@ -333,6 +279,16 @@ def close_state(fd):
         warn(f"failed closing state: {exc}")
 
 
+def kept_across_sessions(name):
+    """True for the files of the usage record, which outlives sessions by
+    design: the live file and its lock, the first format's file, and the copies
+    of a file the plugin set aside. A write that died halfway leaves a
+    `.tmp-<pid>` file, which is none of those and ages out like session state."""
+    return (name in (STATS_FILE_NAME, LEGACY_STATS_FILE_NAME,
+                     STATS_FILE_NAME + LOCK_SUFFIX)
+            or name.startswith(STATS_FILE_NAME + ASIDE_SUFFIX))
+
+
 def cleanup_stale_state():
     directory = state_dir()
     if directory is None:
@@ -341,49 +297,11 @@ def cleanup_stale_state():
         cutoff = time.time() - STATE_MAX_AGE_SECONDS
         with os.scandir(directory) as it:
             for entry in it:
-                if entry.name == STATS_FILE_NAME:
-                    continue  # usage outlives sessions by design
+                if kept_across_sessions(entry.name):
+                    continue
                 if entry.is_file() and entry.stat().st_mtime < cutoff:
                     os.unlink(entry.path)
     except FileNotFoundError:
         pass
     except Exception as exc:
         warn(f"state cleanup failed: {exc}")
-
-
-def detect_context_regression(state, current_tokens):
-    """Fallback for when SessionStart(compact|clear)'s async reset loses the
-    race against the very next PreToolUse: the reset's `--reset-session`
-    delete has not landed yet, so `injected_rules` still carries the
-    pre-compaction high-water mark, and a rule whose text just got summarized
-    out of context reads as "already delivered" and stays silent exactly when
-    it needs to be repeated (this is the failure the reset exists to prevent;
-    here it is caught late instead of not at all).
-
-    Clears `injected_rules` in place — `calls` is untouched — and returns True
-    when `current_tokens` has fallen more than TOKEN_REGRESSION_SLACK below
-    the highest token count recorded on any `injected_rules` entry: a drop
-    that size is compaction or /clear, not the ordinary jitter of which turn
-    the transcript's last usage record happens to describe. `current_tokens is
-    None` (no readable transcript) or no entry with a recorded token count
-    both mean there is nothing to compare against, so nothing is cleared — a
-    regression is never guessed at, only measured.
-    """
-    if current_tokens is None:
-        return False
-    injected_rules = state.get("injected_rules")
-    if not isinstance(injected_rules, dict):
-        return False
-    recorded = [entry[1]
-                for entry in map(coerce_seen_entry, injected_rules.values())
-                if entry is not None and entry[1] is not None]
-    if not recorded:
-        return False
-    max_recorded = max(recorded)
-    if current_tokens + TOKEN_REGRESSION_SLACK < max_recorded:
-        warn(f"context tokens dropped from {max_recorded} to {current_tokens}; "
-             "compaction/clear likely won the race against the async reset, "
-             "clearing injected rules so they re-inject on this call")
-        injected_rules.clear()
-        return True
-    return False

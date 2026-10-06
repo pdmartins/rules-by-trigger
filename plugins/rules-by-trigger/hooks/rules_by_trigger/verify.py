@@ -40,6 +40,7 @@ from .discovery import (find_scopes, git_root_of, global_scope,
                         project_root_of)
 from .frontmatter import verify_of
 from .matching import collect_candidates
+from .repo import repo_of_session
 from .state import close_state, open_state, save_state, state_file_for
 from .stats import record_verifications
 from .verifyreport import build_report, build_system_message
@@ -326,11 +327,12 @@ def verify_turn():
     # rule that asked for it: counting it would make `status` report a
     # verification that never happened, with a failure rate that is the
     # machine's and not the code's.
-    record_verifications(session_id,
-                         [(scope_dir, name, result.status == STATUS_PASSED)
-                          for job, result in results
-                          if result.status not in DID_NOT_RUN_STATUSES
-                          for scope_dir, name in job.rules])
+    outcomes = [(scope_dir, name, result.status == STATUS_PASSED)
+                for job, result in results
+                if result.status not in DID_NOT_RUN_STATUSES
+                for scope_dir, name in job.rules]
+    if outcomes:
+        record_verifications(session_id, repo_of_session(session_id), outcomes)
     report = build_report(results, messages)
     output = {} if report is None else {"decision": "block", "reason": report}
     # The user's block rides on every turn that has anything to report, held

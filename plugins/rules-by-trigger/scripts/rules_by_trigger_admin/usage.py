@@ -17,6 +17,7 @@ GLOB_METACHARS = "*?"
 
 # ---- user-visible text ------------------------------------------------------
 USAGE_LABEL = "injected {injections}x in {sessions} session(s), last {last}"
+USAGE_ELSEWHERE = "injected {total}x in other repos"
 USAGE_REPEATS = "{reinjections} repeat(s)"
 USAGE_VERIFICATIONS = "verified {verifications}, failed {failures}"
 USAGE_SEPARATOR = ", "
@@ -34,16 +35,22 @@ def day_of(timestamp):
     return datetime.datetime.fromtimestamp(timestamp, datetime.timezone.utc).date().isoformat()
 
 
-def usage_of(stats, scope_dir, name):
-    return stats["rules"].get(HOOK.rule_key(scope_dir, name))
+def usage_of(stats, scope_dir, name, repo):
+    """What the stats hold for a rule: this repo's entry (an empty one when the
+    rule never fired here) plus the rule's total, or None when it has no
+    record at all."""
+    rule = stats["rules"].get(HOOK.rule_key(scope_dir, name))
+    if rule is None:
+        return None
+    return {**(rule["repos"].get(repo) or HOOK.empty_entry()), "total": rule["total"]}
 
 
 def public_usage(entry):
-    """The entry as `status --json` shows it: the counters and the dates,
-    never the session ids."""
+    """The entry as `status --json` shows it: this repo's counters and dates,
+    never the session ids, and the rule's total."""
     if entry is None:
         return None
-    return {"injections": entry["injections"], "reinjections": entry["reinjections"],
+    return {"total": entry["total"], "injections": entry["injections"], "reinjections": entry["reinjections"],
             "sessions": entry["sessions"], "first": day_of(entry["first"]),
             "last": day_of(entry["last"]), "dirs": entry["dirs"],
             "globs": entry["globs"], "verifications": entry["verifications"],
@@ -66,6 +73,8 @@ def usage_label(entry):
         parts.append(USAGE_LABEL.format(injections=entry["injections"],
                                         sessions=entry["sessions"],
                                         last=day_of(entry["last"])))
+    elif entry["total"]:
+        parts.append(USAGE_ELSEWHERE.format(total=entry["total"]))
     if entry["reinjections"]:
         parts.append(USAGE_REPEATS.format(reinjections=entry["reinjections"]))
     if entry["verifications"]:
@@ -79,8 +88,10 @@ def never_injected(entry):
 
     Not the same as "has no entry": a rule whose `verify:` ran has an entry
     with zero injections, and it is exactly as unread as one with no entry at
-    all — a command running says nothing about the guidance beside it."""
-    return entry is None or not entry["injections"]
+    all — a command running says nothing about the guidance beside it. It is
+    the rule's total that decides, every repo counted: a rule that fired
+    elsewhere is read, even if never here."""
+    return entry is None or not entry["total"]
 
 
 def segments_of(path):
@@ -136,18 +147,19 @@ def narrowing_note(name, globs, entry):
                               suggested=common_path + "/**")
 
 
-def usage_notes(stats, scope_dir, rules):
-    """Notes for one scope. `rules` is [(name, globs)]."""
+def usage_notes(stats, scope_dir, rules, repo):
+    """Notes for one scope, from `repo`'s point of view. `rules` is
+    [(name, globs)]."""
     if not stats["rules"]:
         return []  # nothing recorded anywhere yet: silence, not forty "never"s
     notes = []
     never = [name for name, _globs in rules
-             if never_injected(usage_of(stats, scope_dir, name))]
+             if never_injected(usage_of(stats, scope_dir, name, repo))]
     if never:
         notes.append(NOTE_NEVER.format(since=day_of(stats["since"]),
                                        names=", ".join(never)))
     for name, globs in rules:
-        note = narrowing_note(name, globs, usage_of(stats, scope_dir, name))
+        note = narrowing_note(name, globs, usage_of(stats, scope_dir, name, repo))
         if note:
             notes.append(note)
     return notes

@@ -37,19 +37,20 @@ def isolated_env(fake_home, extra=None):
     env.pop("HOMEPATH", None)
     env.pop("HOMEDRIVE", None)
     env.pop("CLAUDE_PLUGIN_DATA", None)
+    env.pop("CLAUDE_PROJECT_DIR", None)  # tests that need a repo set it in `extra`
     env.pop("RULES_BY_TRIGGER_REINFORCE_EVERY", None)
     if extra:
         env.update(extra)
     return env
 
 
-def run_hook(payload, fake_home, args=(), env=None, timeout=30):
+def run_hook(payload, fake_home, args=(), env=None, timeout=30, cwd=None):
     """Run the hook as Claude Code would: JSON payload on stdin."""
     return subprocess.run(
         [sys.executable, HOOK_PATH, *args],
         input=json.dumps(payload) if isinstance(payload, dict) else payload,
         capture_output=True, text=True, env=isolated_env(fake_home, env),
-        timeout=timeout,
+        timeout=timeout, cwd=cwd,
     )
 
 
@@ -70,11 +71,11 @@ def injected_text(proc):
     return hook_specific_output(proc).get("additionalContext")
 
 
-def run_admin(args, fake_home, stdin_text="", env=None):
+def run_admin(args, fake_home, stdin_text="", env=None, cwd=None):
     return subprocess.run(
         [sys.executable, ADMIN_PATH, *args],
         input=stdin_text, capture_output=True, text=True,
-        env=isolated_env(fake_home, env), timeout=30,
+        env=isolated_env(fake_home, env), timeout=30, cwd=cwd,
     )
 
 
@@ -194,9 +195,9 @@ class SandboxTestCase(unittest.TestCase):
         for relative in self.PROJECT_SUBDIRS:
             os.makedirs(os.path.join(self.proj, *relative.split("/")), exist_ok=True)
 
-    def admin(self, *args, stdin=""):
+    def admin(self, *args, stdin="", env=None, cwd=None):
         """Run the admin CLI with HOME pointed at this sandbox."""
-        return run_admin(list(args), self.home, stdin_text=stdin)
+        return run_admin(list(args), self.home, stdin_text=stdin, env=env, cwd=cwd)
 
     def read_rule(self, name):
         with open(os.path.join(self.scope, name), encoding="utf-8") as handle:

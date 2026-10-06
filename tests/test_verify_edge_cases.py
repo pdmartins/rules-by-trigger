@@ -72,8 +72,8 @@ class VerifyEdgeCaseTestCase(util.SandboxTestCase):
             return 0
         with open(path, encoding="utf-8") as handle:
             rules = json.load(handle)["rules"]
-        entry = rules.get(f"{os.path.realpath(scope)}::{name}") or {}
-        return entry.get("verifications", 0)
+        rule = rules.get(f"{os.path.realpath(scope)}::{name}") or {"repos": {}}
+        return sum(entry["verifications"] for entry in rule["repos"].values())
 
 
 class RuleWrittenThisSessionTest(VerifyEdgeCaseTestCase):

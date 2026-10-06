@@ -22,9 +22,10 @@ from .frontmatter import remember_again_after_of
 from .messages import LEGACY_NOTICE_KEY, messages_for
 from .notice import build_pretooluse_output
 from .reinject import reinject_budget
+from .repo import repo_of_state
 from .rules import read_rule_file
-from .state import (cleanup_stale_state, close_state, context_size,
-                    detect_context_regression, is_due, open_state,
+from .contexttokens import context_size, detect_context_regression
+from .state import (cleanup_stale_state, close_state, is_due, open_state,
                     pop_superseded_entries, save_state, state_file_for)
 from .stats import record_injections
 from .written import record_written
@@ -136,6 +137,7 @@ def deliver(payload, tool_name, scopes, candidates, legacy_scopes, abs_path):
     state_path = state_file_for(payload.get("session_id"))
     state_fd, state = open_state(state_path)
     blocks = []
+    repo = None
     try:
         state["calls"] = state.get("calls", 0) + 1
         call_number = state["calls"]
@@ -198,6 +200,12 @@ def deliver(payload, tool_name, scopes, candidates, legacy_scopes, abs_path):
                     blocks, messages, bool(agent_prefix), show_injections(config)))
                 sys.stdout.write(payload_out)
                 sys.stdout.flush()
+                if any("scope_dir" in block for block in blocks):
+                    # After the flush, like the stats themselves: working out
+                    # the repository may start `git`, and that must never
+                    # delay a delivery. Once per session; the state saved just
+                    # below keeps the answer.
+                    repo = repo_of_state(state)
         save_state(state_fd, state)  # advances the call counter either way
     finally:
         close_state(state_fd)
@@ -206,7 +214,7 @@ def deliver(payload, tool_name, scopes, candidates, legacy_scopes, abs_path):
         # state released: it is bookkeeping, and bookkeeping never gets to
         # delay or lose a delivery.
         base_dirs = {scope_dir: base_dir for base_dir, scope_dir, _label in scopes}
-        record_injections(payload.get("session_id"), [
+        record_injections(payload.get("session_id"), repo, [
             (block["scope_dir"], base_dirs.get(block["scope_dir"]),
              block["name"], block["glob"], block["repeat"])
             for block in blocks if "scope_dir" in block], abs_path)

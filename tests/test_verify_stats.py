@@ -20,6 +20,11 @@ PASSING = f"{PYTHON} -c {shlex.quote('pass')}"
 class VerifyStatsTest(util.SandboxTestCase):
     PROJECT_SUBDIRS = ("src",)
     SESSION = "s1"
+    ENV = None
+
+    def setUp(self):
+        super().setUp()
+        self.ENV = {"CLAUDE_PROJECT_DIR": self.proj}
 
     def wrote(self, *relatives):
         paths = [os.path.join(self.proj, rel).replace(os.sep, "/")
@@ -31,9 +36,12 @@ class VerifyStatsTest(util.SandboxTestCase):
     def verify(self):
         proc = util.run_hook({"session_id": self.SESSION, "cwd": self.proj,
                               "hook_event_name": "Stop"},
-                             self.home, args=("--verify",))
+                             self.home, args=("--verify",), env=self.ENV)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return proc
+
+    def legacy_file(self):
+        return os.path.join(util.state_dir(self.home), HOOK.LEGACY_STATS_FILE_NAME)
 
     def stats_file(self):
         return os.path.join(util.state_dir(self.home), HOOK.STATS_FILE_NAME)
@@ -41,10 +49,11 @@ class VerifyStatsTest(util.SandboxTestCase):
     def entry(self, name):
         with open(self.stats_file(), encoding="utf-8") as handle:
             rules = json.load(handle)["rules"]
-        return rules[f"{os.path.realpath(self.scope)}::{name}"]
+        rule = rules[f"{os.path.realpath(self.scope)}::{name}"]
+        return rule["repos"][os.path.realpath(self.proj)]
 
     def status(self, *extra):
-        proc = self.admin("status", "--root", self.proj, *extra)
+        proc = self.admin("status", "--root", self.proj, *extra, env=self.ENV)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return proc.stdout
 
@@ -72,7 +81,7 @@ class VerifyStatsTest(util.SandboxTestCase):
         util.write_rule(self.proj, "CONV_a.md", "src/**", "Rule.",
                         extra_frontmatter=[f"verify: {FAILING}"])
         key = f"{os.path.realpath(self.scope)}::CONV_a.md"
-        util.write_file(self.stats_file(), json.dumps(
+        util.write_file(self.legacy_file(), json.dumps(
             {"version": 1, "since": 1, "rules": {key: {
                 "injections": 2, "reinjections": 1, "sessions": 1,
                 "recent_sessions": ["old"], "first": 1, "last": 2,

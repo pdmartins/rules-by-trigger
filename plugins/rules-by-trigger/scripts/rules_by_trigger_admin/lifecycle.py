@@ -141,6 +141,44 @@ def restore_lines(args, anchor, fields, globs):
             entries=", ".join(added)))
 
 
+def holder(name, fields, globs=None):
+    """(name, globs) a rule contributes to the project's deny lines: its globs
+    (or `globs`, the ones it is about to have) while it is active and carries
+    `block: true`, none otherwise — a disabled rule holds no line."""
+    if not (HOOK.block_of(fields) and HOOK.is_enabled(fields)):
+        return name, []
+    return name, list(HOOK.globs_of(fields) if globs is None else globs)
+
+
+def sync_lines(is_global, scope_dir, anchor, before, after):
+    """Bring the project's `Edit(<glob>)` lines in line with an operation that
+    changes rules of `scope_dir`: `before` and `after` are `holder` results for
+    the rules the operation replaces or removes, as they are now, and for the
+    rules it leaves in their place.
+
+    A line goes when only `before` asked for it — no other active `block: true`
+    rule of the project, and nothing in `after`, still does; a line comes when
+    only `after` asks for it. A glob a rule already held is neither taken out
+    nor put back, so a rule never synced stays as it was. Idempotent, like
+    `apply_deny_lines`: the same call after a failed run finishes the job.
+    The global scope has no lines (the hook blocks for it directly)."""
+    if is_global:
+        return
+    changing = {name for name, _globs in (*before, *after)}
+    others = [rule for rule in blocking_rules(scope_dir) if rule[0] not in changing]
+    held = deny_entries([(name, globs, []) for name, globs in before])
+    wanted = deny_entries([(name, globs, []) for name, globs in after])
+    still_needed = deny_entries(others) + wanted
+    added, removed = apply_deny_lines(
+        anchor, add=[entry for entry in wanted if entry not in held],
+        remove=[entry for entry in held if entry not in still_needed])
+    for message, entries in ((MESSAGE_LINES_ADDED, added),
+                             (MESSAGE_LINES_REMOVED, removed)):
+        if entries:
+            print(message.format(count=len(entries), path=settings_path_of(anchor),
+                                 entries=", ".join(entries)))
+
+
 def rule_to_remove(scope_dir, args):
     """The rule name `remove` was pointed at, by name or by its one glob."""
     if args.rule:

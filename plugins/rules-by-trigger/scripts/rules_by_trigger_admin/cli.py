@@ -13,8 +13,10 @@ from .block import cmd_block
 from .migrate import cmd_migrate
 from .move import ANCHOR_CHOICES, cmd_move
 from .lifecycle import cmd_remove
+from .rename import cmd_rename
 from .rules import cmd_add, cmd_init, cmd_list, cmd_show, cmd_update
 from .setup import is_set_up, setup_notice
+from .split import SPLIT_HELP, cmd_split
 from .status import cmd_status
 from .validate import cmd_validate
 from .which import cmd_which
@@ -25,7 +27,14 @@ COMMANDS = {"init": cmd_init, "list": cmd_list, "show": cmd_show,
             "remove": cmd_remove, "validate": cmd_validate,
             "config": cmd_config, "migrate": cmd_migrate,
             "block": cmd_block, "status": cmd_status,
-            "doctor": cmd_doctor, "move": cmd_move, "digest": cmd_digest}
+            "doctor": cmd_doctor, "move": cmd_move, "digest": cmd_digest,
+            "rename": cmd_rename, "split": cmd_split}
+
+# The commands that take their rule as an argument after the command name, and
+# what each argument is called: `rename <rule> <new-name>`, `split <rule>`.
+OPERANDS = {"rename": ("rule", "new_name"), "split": ("rule",)}
+OPERANDS_USAGE = {"rename": "<rule> <new-name>", "split": "<rule>"}
+EPILOG = SPLIT_HELP
 
 # Commands that never carry the setup notice. `doctor` is where the notice is
 # answered (`--setup`), so a reminder on top of it would be noise. `show`
@@ -47,8 +56,11 @@ COMMAND_ALIASES = {"enforce": "block"}
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        epilog=EPILOG, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=list(COMMANDS) + list(COMMAND_ALIASES))
+    parser.add_argument("operands", nargs="*", metavar="argument",
+                        help="rename: <rule> <new-name>; split: <rule>")
     scope = parser.add_mutually_exclusive_group()
     scope.add_argument("--root", help="project root (the folder containing "
                                       ".claude/); on status, the folder it "
@@ -143,12 +155,24 @@ def main():
     parser.add_argument("--sync", action="store_true",
                         help="block: write the native deny entries a project's "
                              "block: true rules need into its settings.json")
-    args = parser.parse_args()
+    args = parser.parse_intermixed_args()
 
     # `status` alone may leave the scope out: it then starts from
     # CLAUDE_PROJECT_DIR or the current folder.
     if args.command not in COMMANDS_WITHOUT_SCOPE and not (args.root or args.use_global):
         parser.error("one of the arguments --root --global is required")
+
+    if args.command in OPERANDS:
+        names = OPERANDS[args.command]
+        if (len(args.operands) != len(names) or args.rule or args.glob
+                or args.type or args.remember_again_after):
+            fail(f"'{args.command}' takes {OPERANDS_USAGE[args.command]} and no "
+                 f"--rule/--glob/--type/--remember-again-after")
+        for attribute, value in zip(names, args.operands):
+            setattr(args, attribute, value)
+    elif args.operands:
+        fail(f"'{args.command}' takes no positional arguments "
+             f"({' '.join(args.operands)!r}); they belong to `rename` and `split`")
 
     if args.command in COMMAND_ALIASES:
         current = COMMAND_ALIASES[args.command]

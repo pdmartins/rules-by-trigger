@@ -20,9 +20,9 @@ from .config import (TYPE_SEPARATOR, check_remember_again_after, config_for,
                      resolve_type)
 from .describe import (calls_for, describe_filters, describe_verify,
                        filters_label, triggers_label)
-from .lifecycle import (enable_rule, refuse_disabled_duplicate,
+from .lifecycle import (enable_rule, holder, refuse_disabled_duplicate,
                         refuse_enabled_change, refuse_submitted_enabled,
-                        restore_lines)
+                        sync_lines)
 from .validate import filter_problems, validate_scope
 
 
@@ -316,18 +316,25 @@ def cmd_update(args):
     merged = {**fields, **submitted}
     if args.enable:
         merged.pop(ENABLED_KEY, None)
-    atomic_write(path, render_rule(globs, body, interval,
-                                   preserved_fields(merged, owned_last=True),
-                                   excludes=excludes, tool=tool, verify=verify,
-                                   calls=calls))
+    text = render_rule(globs, body, interval,
+                       preserved_fields(merged, owned_last=True),
+                       excludes=excludes, tool=tool, verify=verify, calls=calls)
+    # The rule file still names the old globs until the lines of the ones it no
+    # longer has are gone, so it is written LAST: a failed run is finished by
+    # running the same command again. What the rule holds is compared as it is
+    # now and as it is about to be written (globs, `block`, `enabled`), so a
+    # glob change, a `block` toggle and `--enable` all move the lines here.
+    before = holder(args.rule, fields)
+    after = holder(args.rule, merged, globs)
+    if before != after:
+        sync_lines(args.use_global, scope_dir, anchor, [before], [after])
+    atomic_write(path, text)
     print(f"ok: updated {args.rule}")
     filters = describe_filters(excludes, tool, calls)
     if filters:
         print(filters)
     for line in describe_verify(verify):
         print(line)
-    if args.enable:
-        restore_lines(args, anchor, merged, globs)
     config = config_for(args)
     warn_if_long(args.rule, body, config)
     validate_scope(scope_dir, anchor, quiet=True, config=config,

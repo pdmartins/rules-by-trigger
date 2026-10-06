@@ -11,10 +11,13 @@ mean "in any project" or "in this one" — and that one is asked for, with
 import os
 from types import SimpleNamespace
 
+from .carry import (DEST_OVERWRITE, DEST_SAME, carry_history,
+                    clear_overwritten, plan_destination)
 from .common import (HOOK, MAX_ECHOED_NAME_CHARS, atomic_write,
                      existing_rule_path, fail, read_regular_file, rule_path,
                      scope_for, warn)
 from .config import config_for, describe_types, split_type_prefix
+from .lifecycle import holder, sync_lines
 from .rules import preserved_fields, render_rule, submitted_interval
 from .validate import validate_scope
 
@@ -34,15 +37,12 @@ AMBIGUOUS = ("{glob!r} is anchored at the project root, which means nothing in "
 OUTSIDE_ROOT = ("{glob!r} points outside {root} and cannot become a project "
                 "glob there; narrow or drop it first (`update --glob`)")
 TYPE_MISSING = ("the type prefix of {name!r} is not in the destination's "
-                "taxonomy — rename first (`remove` + `add --type`). Types "
-                "configured there:\n{types}")
+                "taxonomy — `rename` it first, to a type configured there. "
+                "Types configured there:\n{types}")
 LANGUAGE_DIFFERS = ("the destination writes rules in {dest!r}, the source in "
                     "{source!r}; the body was moved as is, not translated")
 BLOCK_TO_GLOBAL = ("this rule carries `block: true`: in the global scope the "
                    "hook honours it, so matching writes will be BLOCKED from now on")
-BLOCK_TO_PROJECT = ("this rule carries `block: true`: a project scope cannot "
-                    "block on its own — run `block --sync` there to write the "
-                    "native deny entry")
 MOVED = "ok: moved {name}  {source} -> {dest}"
 REWRITTEN = "    {key}: {before!r} -> {after!r}"
 PROVE_PATH = ("check the reach: `which --{flag} --path '<a file it should "
@@ -144,8 +144,6 @@ def cmd_move(args):
         fail(TYPE_MISSING.format(name=name[:MAX_ECHOED_NAME_CHARS],
                                  types=describe_types(dest_config)))
     target = rule_path(dest_dir, name)
-    if os.path.exists(target) and not args.force:
-        fail(f"{name} already exists in the {dest_label} scope; --force replaces it")
 
     if dest.use_global:
         rewrite = lambda glob: to_global(glob, source_anchor, args.anchor)  # noqa: E731
@@ -164,13 +162,27 @@ def cmd_move(args):
 
     source_language = HOOK.language(config_for(args))
     dest_language = HOOK.language(dest_config)
-    os.makedirs(dest_dir, exist_ok=True)
-    atomic_write(target, render_rule(
+    text = render_rule(
         [after for _before, after in globs], body, submitted_interval(fields),
         preserved_fields(fields, owned_last=True),
         excludes=[after for _before, after in excludes],
         tool=HOOK.tools_of(fields), verify=HOOK.verify_of(fields),
-        calls=calls))
+        calls=calls)
+    # Everything that can refuse has run: from here on the command writes.
+    state = plan_destination(target, text, name, dest_label, args.force)
+    if state == DEST_OVERWRITE:
+        clear_overwritten(dest.use_global, dest_dir, dest_anchor, name)
+    os.makedirs(dest_dir, exist_ok=True)
+    if state != DEST_SAME:
+        atomic_write(target, text)
+    sync_lines(dest.use_global, dest_dir, dest_anchor, [],
+               [holder(name, fields, [after for _before, after in globs])])
+    sync_lines(args.use_global, source_dir, source_anchor,
+               [holder(name, fields)], [])
+    # A global rule becoming a project one keeps only the history of the repo
+    # it now belongs to; every other move carries all of it.
+    only_repo = HOOK.repo_root_of(dest_anchor) if args.use_global else None
+    carry_history(source_dir, name, dest_dir, name, only_repo)
     os.unlink(source_path)
 
     source_label = "global" if args.use_global else f"project {source_anchor}"
@@ -181,8 +193,8 @@ def cmd_move(args):
                 print(REWRITTEN.format(key=key, before=before, after=after))
     if source_language != dest_language:
         warn(LANGUAGE_DIFFERS.format(dest=dest_language, source=source_language))
-    if HOOK.block_of(fields):
-        warn(BLOCK_TO_GLOBAL if dest.use_global else BLOCK_TO_PROJECT)
+    if HOOK.block_of(fields) and dest.use_global:
+        warn(BLOCK_TO_GLOBAL)
     if globs:
         print(PROVE_PATH.format(flag=dest_flag))
     else:

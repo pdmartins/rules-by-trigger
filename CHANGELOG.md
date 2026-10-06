@@ -11,6 +11,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
   directory is still exactly what an install copies, and nothing inside it
   moved. The marketplace `source` and `publish.sh` point at the new path.
   Why: one layout across all the plugin repositories.
+- **The plugin ships its own `LICENSE`.** `plugin/LICENSE` is a copy of the
+  root one. Why: an install copies only `plugin/`, and the MIT notice has to
+  travel with every copy.
 
 ## 0.11.0 — 2026-09-30
 

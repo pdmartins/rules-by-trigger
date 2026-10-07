@@ -59,7 +59,7 @@ one.
 In Claude Code:
 
 ```
-/plugin marketplace add pdmartins/rules-by-trigger
+/plugin marketplace add pdmartins/claude-plugins
 /plugin install rules-by-trigger@pdmartins
 ```
 
@@ -781,12 +781,12 @@ Two commands answer nearly everything; `/rules-by-trigger:status` and the
 
 ## Repository layout
 
-The plugin is one directory. Everything else in this repository is the
-marketplace that publishes it, or scaffolding that builds and tests it — none
-of which is installed on a user's machine.
+The plugin is one directory. Everything else in this repository is
+scaffolding that builds and tests it — none of which is installed on a user's
+machine. The marketplace that lists the plugin lives in
+[`pdmartins/claude-plugins`](https://github.com/pdmartins/claude-plugins).
 
 ```
-.claude-plugin/marketplace.json   the marketplace (this repo is one)
 plugin/                           THE PLUGIN — this, and only this, is installed
 ├── .claude-plugin/plugin.json
 ├── LICENSE                       copy of the root LICENSE, so the notice travels with an install
@@ -805,27 +805,27 @@ If it is not under `plugin/`, Claude Code never sees it.
 
 ```bash
 python3 -m unittest discover -s tests    # the suite, standard library only
-claude plugin validate . --strict        # both manifests
-bash publish.sh --local                  # install the working tree on this machine
+claude plugin validate plugin --strict   # the plugin manifest
+claude --plugin-dir plugin               # run the working tree in a session
 ```
 
-`--local` reinstalls rather than updating on purpose: the version is
-`MAJOR.MINOR.REVISION` and changes **only** on a release, so `claude plugin
-update` would compare two identical version strings and keep serving the cached
-copy.
-
-The mode also decides where the install comes from, and the script repoints the
-marketplace to match: a release installs from **GitHub** — exactly what it just
-published, exactly what a user gets — while `--local` installs from **this
-directory**, the only way to run code that is not released yet. The marketplace
-name never changes, so the install id stays `rules-by-trigger@pdmartins` either way
-and the two can never both be installed.
+`--plugin-dir` loads the directory for that session only; nothing is installed
+and nothing is written to your settings. When `rules-by-trigger@pdmartins` is
+also installed, the directory **replaces** it for that session: Claude Code
+keeps one plugin per manifest name and prefers the `--plugin-dir` copy, so the
+hooks do not fire twice and you do not need to disable the installed copy.
+`claude plugin list` still shows the installed copy as enabled, because that row
+reflects your settings. Run `/reload-plugins` to pick up edits made during the
+session. (Claude Code docs: Plugins, Loading, "Name conflicts".)
 
 `bash publish.sh --minor` (or `--major` / `--revision`) is the release. It
-refuses on a dirty tree, a failing suite or invalid manifests; then it bumps
-both manifests, merges `develop` into `main`, pushes, points GitHub's default
-branch at `main` — `/plugin marketplace add` reads that branch — and refreshes
-the local install. `--dry-run` prints the plan without touching anything.
+refuses on a dirty tree, a failing suite, an empty `## Unreleased` or an invalid
+plugin; then it bumps `plugin.json`, merges `develop` into `main`, pushes, and
+points GitHub's default branch at `main` — the marketplace entry has no ref, so
+it serves that branch. It never touches `pdmartins/claude-plugins` and never
+touches this machine's install: afterwards it prints `/plugin marketplace update
+pdmartins` and `claude plugin update rules-by-trigger@pdmartins` for you to run.
+`--dry-run` prints the plan without touching anything.
 
 ## Roadmap
 

@@ -5,6 +5,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## Unreleased
 
+### Changed
+
+- **Breaking:** the plugin is installed from `pdmartins/claude-plugins`. This
+  repository is no longer a marketplace: run `/plugin marketplace add pdmartins/claude-plugins`,
+  then `/plugin install rules-by-trigger@pdmartins`. The old
+  `/plugin marketplace add pdmartins/rules-by-trigger` no longer works once
+  this is released. Why: one marketplace for all the plugins.
+
 ## 0.12.0 — 2026-10-06
 
 ### Changed

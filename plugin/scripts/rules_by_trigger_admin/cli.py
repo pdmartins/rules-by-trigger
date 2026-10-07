@@ -132,8 +132,10 @@ def main():
                         help="doctor: apply the deterministic fixes (migration) "
                              "and re-check")
     parser.add_argument("--uninstall", action="store_true",
-                        help="doctor: remove the deny entries and cached state "
-                             "the plugin left behind; rule directories are kept")
+                        help="doctor: remove the plugin's protection lines from "
+                             "~/.claude/settings.json and its state folders; "
+                             "rule directories and project settings are kept. "
+                             "Without it, doctor only lists what this would remove")
     parser.add_argument("--setup", action="store_true",
                         help="config: record this machine's setup consent in "
                              "~/.claude/rules-by-trigger/config.json; needs "

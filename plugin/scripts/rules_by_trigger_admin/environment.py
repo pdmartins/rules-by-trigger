@@ -15,15 +15,16 @@ PLUGIN_MANIFEST_RELPATH = os.path.join(".claude-plugin", "plugin.json")
 HOOK_LAUNCHER_RELPATH = os.path.join("bin", "rules-by-trigger-hook")
 # A manifest is a few KB; this is a ceiling, not an expectation.
 MAX_MANIFEST_BYTES = 1024 * 1024
+UNKNOWN_VERSION = "?"
 
 
 def plugin_version():
     path = os.path.join(HOOK.PLUGIN_ROOT, PLUGIN_MANIFEST_RELPATH)
     try:
         return json.loads(read_regular_file(path, MAX_MANIFEST_BYTES)).get(
-            "version", "?")
+            "version", UNKNOWN_VERSION)
     except (OSError, ValueError):
-        return "?"
+        return UNKNOWN_VERSION
 
 
 def scope_targets(args):

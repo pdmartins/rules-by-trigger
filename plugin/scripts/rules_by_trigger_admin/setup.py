@@ -124,8 +124,8 @@ def run_setup(args):
 
 def check_setup():
     """The report's own line about consent — WARN, never ERROR: a machine
-    that never ran `config --setup` still gets everything injected, so this must not
-    flip `doctor`'s exit code the way a broken installation does."""
+    that never ran `config --setup` still gets everything injected, so it is
+    not a broken installation, but it is still a problem `doctor` reports."""
     path = user_config_path()
     if is_set_up():
         return [finding(LEVEL_OK, CHECK_DONE.format(path=path))]

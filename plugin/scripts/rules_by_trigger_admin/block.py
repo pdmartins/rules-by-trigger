@@ -98,8 +98,12 @@ def existing_deny_entries(settings_path):
             data = json.load(handle)
     except (OSError, ValueError):
         return []
-    deny = (data or {}).get("permissions", {}).get("deny")
-    return deny if isinstance(deny, list) else []
+    permissions = data.get("permissions") if isinstance(data, dict) else None
+    deny = permissions.get("deny") if isinstance(permissions, dict) else None
+    if not isinstance(deny, list):
+        return []
+    # Only strings: a hand-edited file may hold anything in the array.
+    return [entry for entry in deny if isinstance(entry, str)]
 
 
 def apply_deny_lines(anchor, add=(), remove=()):

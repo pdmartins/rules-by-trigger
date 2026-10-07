@@ -3,8 +3,9 @@ command, each finding naming its fix. `--fix` applies the deterministic ones
 (migration); the hardening is the one fix that is never automatic, because it
 edits the user's own `~/.claude/settings.json` and has to be asked for by
 name, through `config --harden`; the machine's own consent is `config --setup`
-— see `setup.py` — and `--uninstall` undoes what the plugin left behind while
-deliberately keeping the user's rules.
+— see `setup.py` — and `--uninstall` (in `uninstall.py`) undoes what the plugin
+left behind while deliberately keeping the user's rules; a plain run ends with
+the list of what it would remove.
 
 Setup and troubleshooting are the same checks at different moments, so they
 are one command. The text that only matters when a problem exists is printed
@@ -12,7 +13,6 @@ here, when the problem is found, not carried by a skill on every load."""
 
 import json
 import os
-import shutil
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -22,22 +22,24 @@ from .common import (HOOK, HOOK_PATH, INTERVAL_KEY, LEGACY_INTERVAL_KEY,
                      LEVEL_WARN, finding, rules_in)
 from .config import TYPE_SEPARATOR, config_for, split_type_prefix
 from .block import read_settings_for_sync
-from .hardening import hardening_state, remove_hardening, user_settings_path
+from .hardening import hardening_state, settings_problem, user_settings_path
 from .migrate import cmd_migrate
-from .setup import check_setup
-from .environment import (HOOK_LAUNCHER_RELPATH, plugin_version,
+from .setup import check_setup, is_set_up
+from .uninstall import cmd_uninstall, print_preview, state_folders
+from .environment import (HOOK_LAUNCHER_RELPATH, UNKNOWN_VERSION, plugin_version,
                           scope_dir_and_anchor, scope_targets)
 from .validate import scope_findings
 
 PROBE_SESSION_ID = "rbt-doctor-probe"
 PROBE_FILE_NAME = "rules-by-trigger-doctor-probe.txt"
 HOOK_TIMEOUT_SECONDS = 15
+# The levels that make the exit code non-zero; INFO and OK never do.
+PROBLEM_LEVELS = (LEVEL_WARN, LEVEL_ERROR)
 # What a manual, pre-plugin installation left under ~/.claude.
 MANUAL_INSTALL_RELPATHS = (os.path.join("hooks", "rules-by-trigger.py"),
                            os.path.join("scripts", "rules-by-trigger-admin.py"),
                            os.path.join("skills", "rules-by-trigger"))
 MANUAL_HOOK_MARKER = "hooks/rules-by-trigger.py"
-PLUGIN_UNINSTALL_COMMAND = "/plugin uninstall rules-by-trigger@pdmartins"
 
 # ---- user-visible text, in display order ----------------------------------
 TITLE = "rules-by-trigger {version} — doctor"
@@ -45,6 +47,17 @@ LINE_FINDING = "{level:<5} {text}"
 FIX_AUTO = " — fix: {hint} [--fix applies it]"
 FIX_HARDEN = " — fix: {hint} [applies it; ask the user first]"
 FIX_MANUAL = " — fix: {hint} [manual]"
+VERSION_OK = "plugin version {version}"
+VERSION_UNREADABLE = "plugin version unreadable: the manifest is missing or broken"
+VERSION_FIX = "reinstall the plugin"
+HARDENING_UNKNOWN = ("hardening: {path} cannot be read ({reason}), so the "
+                     "hardening state is unknown")
+HARDENING_UNKNOWN_FIX = "repair or replace the file by hand, then run `doctor` again"
+STATE_LINE = "cached session state: {total} file(s) in {folders}"
+STATE_NO_FOLDER = "(no state directory yet)"
+STATE_REFUSED = "; not counted, `--uninstall` refuses {path}: {reason}"
+HARDENING_NOT_APPLIED = ("hardening: not applied in {path} (declined at setup "
+                         "or never applied); `config --harden` applies it")
 SUMMARY_FIXABLE = "{count} finding(s) can be applied with `doctor --fix`."
 SUMMARY_HARDEN = ("{count} finding(s) need `config --harden`, which edits "
                   "~/.claude/settings.json — ask the user first.")
@@ -52,13 +65,6 @@ SUMMARY_MANUAL = "{count} finding(s) need a human."
 SUMMARY_CLEAN = "\nnothing to fix."
 APPLYING = "\napplying: {hint}"
 RECHECK = "\n--- after fixes ---"
-UNINSTALL_DENY = "removed {count} deny entr{plural} from {path}"
-UNINSTALL_DENY_NONE = "no deny entries about rules-by-trigger in {path}"
-UNINSTALL_STATE = "removed cached state: {path}"
-UNINSTALL_KEPT = "kept (your rules, {count} file(s)): {path}"
-UNINSTALL_NEXT = ("\nnext: run {command} in Claude Code. The rule directories "
-                  "above are yours; delete them by hand only if you will not "
-                  "reinstall.")
 # ---------------------------------------------------------------------------
 
 
@@ -70,7 +76,12 @@ def run_hook(payload, *flags):
 
 def check_environment():
     hook_path = os.path.join(HOOK.PLUGIN_ROOT, HOOK_LAUNCHER_RELPATH)
+    version = plugin_version()
     findings = [finding(LEVEL_OK, f"python {sys.version.split()[0]} at {sys.executable}")]
+    if version == UNKNOWN_VERSION:
+        findings.append(finding(LEVEL_ERROR, VERSION_UNREADABLE, VERSION_FIX))
+    else:
+        findings.append(finding(LEVEL_OK, VERSION_OK.format(version=version)))
     if os.path.isfile(hook_path):
         findings.append(finding(LEVEL_OK, f"hook launcher present: {hook_path}"))
     else:
@@ -178,7 +189,16 @@ def check_scope(label, target):
 def check_hardening():
     state = hardening_state()
     findings = []
-    if state["missing"]:
+    problem = settings_problem(state["settings"])
+    if problem:
+        return [finding(LEVEL_WARN, HARDENING_UNKNOWN.format(
+            path=state["settings"], reason=problem), HARDENING_UNKNOWN_FIX)]
+    if not state["present"] and is_set_up():
+        # Nothing of the hardening is there on a machine that answered the
+        # setup: declined, or never applied. Information, not a problem.
+        findings.append(finding(LEVEL_INFO, HARDENING_NOT_APPLIED.format(
+            path=state["settings"])))
+    elif state["missing"]:
         findings.append(finding(
             LEVEL_WARN, f"hardening: {len(state['missing'])} of "
             f"{len(state['missing']) + len(state['present'])} deny entries missing "
@@ -220,24 +240,22 @@ def check_manual_install():
     return findings
 
 
-def state_directories():
-    """The directories the hook may have written session state into."""
-    plugin_data = os.environ.get("CLAUDE_PLUGIN_DATA")
-    candidates = [os.path.join(plugin_data, "state")] if plugin_data else []
-    candidates.append(os.path.join(os.path.expanduser("~"), ".claude", "cache",
-                                   "rules-by-trigger"))
-    return [path for path in candidates if os.path.isdir(path)]
-
-
 def check_state():
+    """Count the files in the state folders `doctor --uninstall` removes; a
+    folder it refuses to touch is shown as such, never counted."""
+    folders = state_folders()
+    directories = [path for path, refusal in folders if not refusal]
     total = 0
-    for directory in state_directories():
+    for directory in directories:
         try:
             total += sum(1 for entry in os.scandir(directory) if entry.is_file())
         except OSError:
             continue
-    return [finding(LEVEL_INFO, f"cached session state: {total} file(s) in "
-                    f"{', '.join(state_directories()) or '(no state directory yet)'}")]
+    text = STATE_LINE.format(total=total, folders=", ".join(directories)
+                             or STATE_NO_FOLDER)
+    text += "".join(STATE_REFUSED.format(path=path, reason=refusal)
+                    for path, refusal in folders if refusal)
+    return [finding(LEVEL_INFO, text)]
 
 
 def run_checks(args, root):
@@ -293,24 +311,6 @@ def apply_fixes(findings):
     return bool(done)
 
 
-def cmd_uninstall(args):
-    settings_path = user_settings_path()
-    removed = remove_hardening()
-    if removed:
-        print(UNINSTALL_DENY.format(count=len(removed), path=settings_path,
-                                    plural="y" if len(removed) == 1 else "ies"))
-    else:
-        print(UNINSTALL_DENY_NONE.format(path=settings_path))
-    for directory in state_directories():
-        shutil.rmtree(directory, ignore_errors=True)
-        print(UNINSTALL_STATE.format(path=directory))
-    for _label, target in scope_targets(args):
-        scope_dir, _anchor = scope_dir_and_anchor(target)
-        if os.path.isdir(scope_dir):
-            print(UNINSTALL_KEPT.format(count=len(rules_in(scope_dir)), path=scope_dir))
-    print(UNINSTALL_NEXT.format(command=PLUGIN_UNINSTALL_COMMAND))
-
-
 def cmd_doctor(args):
     if args.uninstall:
         cmd_uninstall(args)
@@ -325,5 +325,6 @@ def cmd_doctor(args):
         findings = run_checks(args, root)
         print_findings(findings)
     print_summary(findings)
-    if any(entry["level"] == LEVEL_ERROR for entry in findings):
+    print_preview(args)
+    if any(entry["level"] in PROBLEM_LEVELS for entry in findings):
         sys.exit(1)

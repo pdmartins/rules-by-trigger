@@ -28,8 +28,14 @@ HARDENING_DENY_ENTRIES = (
     "Read(~/.claude/rules-by-trigger/**)",
     "Edit(~/.claude/rules-by-trigger/**)",
 )
-# Any deny entry about the rules directory is this plugin's business — the
-# four above, or an obsolete spelling an older setup wrote.
+# ---- user-visible text -----------------------------------------------------
+SYMLINK_REASON = "it is a symlink"
+UNREADABLE_REASON = "cannot read it: {error}"
+NOT_JSON_REASON = "it is not valid JSON"
+NOT_OBJECT_REASON = "it does not hold a JSON object"
+# -----------------------------------------------------------------------------
+# Any deny entry about the rules directory: the four above, or a spelling
+# someone wrote by hand, which `is_obsolete` may find the matcher ignores.
 RULES_DIR_MARKER = ".claude/rules-by-trigger/"
 HONOURED_TOOLS = ("Read", "Edit")
 # The absolute-from-root anchor: see the module docstring's equivalence note.
@@ -38,6 +44,35 @@ ABSOLUTE_ROOT_PREFIX = "//**/"
 
 def user_settings_path():
     return os.path.join(os.path.expanduser("~"), SETTINGS_RELPATH)
+
+
+def settings_problem(settings_path):
+    """Why `~/.claude/settings.json` cannot be edited as JSON, or None when it
+    is absent or fine: a symlink, unreadable, not valid JSON, not an object."""
+    if not os.path.isfile(settings_path):
+        return None
+    if os.path.islink(settings_path):
+        return SYMLINK_REASON
+    try:
+        with open(settings_path, encoding="utf-8") as handle:
+            text = handle.read()
+    except OSError as exc:
+        return UNREADABLE_REASON.format(error=exc)
+    if not text.strip():
+        return None
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return NOT_JSON_REASON
+    return None if isinstance(data, dict) else NOT_OBJECT_REASON
+
+
+def equivalent_entries(deny):
+    """The hand-written `//**/` spellings present in `deny` that `is_covered`
+    recognises as protection: not the plugin's lines, so never removed."""
+    spellings = [f"{tool}({ABSOLUTE_ROOT_PREFIX}{RULES_DIR_MARKER}**)"
+                 for tool in HONOURED_TOOLS]
+    return [entry for entry in spellings if entry in deny]
 
 
 def is_rules_dir_entry(entry):
@@ -105,10 +140,13 @@ def apply_hardening():
 
 
 def remove_hardening():
-    """Drop every deny entry about the rules directories — the undo for
-    `apply_hardening`, and the first step of an uninstall: without it those
-    paths stay unreadable with nothing left to serve them. Returns what was
-    removed."""
+    """Drop the four exact lines `apply_hardening` writes — the undo for it and
+    the first step of an uninstall: without it those paths stay unreadable with
+    nothing left to serve them. Any other line stays, the recognised `//**/`
+    spellings included. Returns what was removed.
+
+    A file that is not valid JSON raises `AdminError` before anything is
+    written; a failed write raises `OSError` and leaves the file as it was."""
     settings_path = user_settings_path()
     if not os.path.isfile(settings_path):
         return []
@@ -117,8 +155,8 @@ def remove_hardening():
     if not isinstance(permissions, dict) or not isinstance(permissions.get("deny"), list):
         return []
     deny = permissions["deny"]
-    removed = [entry for entry in deny if is_rules_dir_entry(entry)]
+    removed = [entry for entry in deny if entry in HARDENING_DENY_ENTRIES]
     if removed:
-        deny[:] = [entry for entry in deny if not is_rules_dir_entry(entry)]
+        deny[:] = [entry for entry in deny if entry not in HARDENING_DENY_ENTRIES]
         atomic_write(settings_path, json.dumps(data, indent=2) + "\n")
     return removed
